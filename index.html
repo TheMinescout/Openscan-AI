@@ -3,31 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OpenScan-AI | Free Web Scanner</title>
+    <title>OpenScan-AI | Pro</title>
     <link rel="stylesheet" href="css/style.css">
-    <script src="https://unpkg.com/tesseract.js@v5.0.2/dist/tesseract.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
 </head>
 <body>
     <div id="app-container">
         <div class="top-bar">
-            <div class="status-indicator" id="status-msg">Loading AI Engine...</div>
+            <div class="status-indicator" id="status-msg">Initializing...</div>
+            <button id="export-btn" class="text-btn">Save PDF</button>
         </div>
 
         <video id="video-feed" autoplay playsinline muted></video>
         <canvas id="overlay-canvas"></canvas>
         <canvas id="hidden-canvas" style="display:none;"></canvas>
 
+        <div id="freeze-layer" class="freeze-frame"></div>
+
         <div class="controls">
-            <button id="capture-btn" title="Capture Document"></button>
+            <div id="gallery-trigger" class="thumbnail-preview">
+                <img id="last-scan-img" src="" style="display:none;">
+                <span id="scan-count">0</span>
+            </div>
+            
+            <button id="capture-btn"></button>
+            
+            <div class="spacer"></div>
         </div>
 
-        <div id="processing-modal" class="modal">
-            <div class="modal-content">
-                <div class="spinner"></div>
-                <p id="modal-text">Processing Document...</p>
+        <div id="gallery-modal" class="modal">
+            <div class="modal-header">
+                <button id="close-gallery">← Back</button>
+                <span>All Scans</span>
             </div>
+            <div id="gallery-content" class="gallery-grid"></div>
         </div>
     </div>
     <script src="js/app.js"></script>
