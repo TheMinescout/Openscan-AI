@@ -1,130 +1,146 @@
+let cvReady = false;
 const video = document.getElementById('video-feed');
 const canvas = document.getElementById('overlay-canvas');
 const statusMsg = document.getElementById('status-msg');
 const captureBtn = document.getElementById('capture-btn');
 const processingModal = document.getElementById('processing-modal');
 
-let src, gray, blurred, edged, contours, hierarchy;
+// Wait for OpenCV to load
+window.onOpenCvReady = () => {
+    cvReady = true;
+    statusMsg.innerText = "AI Engine Ready";
+    initScanner();
+};
 
-// Initialize Camera
+// Check if OpenCV is already loaded (fallback)
+if (typeof cv !== 'undefined') {
+    window.onOpenCvReady();
+} else {
+    // Poll for OpenCV
+    let checkCv = setInterval(() => {
+        if (typeof cv !== 'undefined') {
+            clearInterval(checkCv);
+            window.onOpenCvReady();
+        }
+    }, 500);
+}
+
 async function initScanner() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
             audio: false 
         });
         video.srcObject = stream;
         video.onloadedmetadata = () => {
             video.play();
-            startProcessingLoop();
+            startLoop();
         };
     } catch (err) {
-        statusMsg.innerText = "Camera Error: " + err.message;
+        statusMsg.innerText = "Error: Please allow camera access.";
+        console.error(err);
     }
 }
 
-// OpenCV Logic for Edge Detection
-function startProcessingLoop() {
-    if (typeof cv === 'undefined') {
-        setTimeout(startProcessingLoop, 500);
-        return;
-    }
-
-    // Set canvas size to match video
+function startLoop() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
-    src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+    const ctx = canvas.getContext('2d');
+    
+    let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
     let cap = new cv.VideoCapture(video);
 
-    function process() {
-        cap.read(src);
-        let docContour = findContour(src);
+    function processFrame() {
+        if (!cvReady) return;
         
-        // Draw Overlay
-        let ctx = canvas.getContext('2d');
+        cap.read(src);
+        let docContour = findDocument(src);
+        
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         if (docContour) {
-            statusMsg.innerText = "Ready to Scan";
-            statusMsg.style.color = "#34C759";
-            drawContourOverlay(ctx, docContour);
+            statusMsg.innerText = "Document Found";
+            drawOverlay(ctx, docContour);
+            docContour.delete(); // Clean memory
         } else {
-            statusMsg.innerText = "Looking for document...";
-            statusMsg.style.color = "white";
+            statusMsg.innerText = "Aligning...";
         }
         
-        requestAnimationFrame(process);
+        requestAnimationFrame(processFrame);
     }
-    process();
+    processFrame();
 }
 
-function findContour(input) {
-    let tempGray = new cv.Mat();
-    let tempBlurred = new cv.Mat();
-    let tempEdged = new cv.Mat();
-    let tempContours = new cv.MatVector();
-    let tempHierarchy = new cv.Mat();
+function findDocument(input) {
+    let gray = new cv.Mat();
+    let blurred = new cv.Mat();
+    let edged = new cv.Mat();
+    let contours = new cv.MatVector();
+    let hierarchy = new cv.Mat();
 
-    cv.cvtColor(input, tempGray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(tempGray, tempBlurred, new cv.Size(5, 5), 0);
-    cv.Canny(tempBlurred, tempEdged, 75, 200);
-    cv.findContours(tempEdged, tempContours, tempHierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+    cv.cvtColor(input, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+    cv.Canny(blurred, edged, 75, 200);
+    cv.findContours(edged, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
+    let foundContour = null;
     let maxArea = 0;
-    let maxContour = null;
 
-    for (let i = 0; i < tempContours.size(); ++i) {
-        let cnt = tempContours.get(i);
+    for (let i = 0; i < contours.size(); ++i) {
+        let cnt = contours.get(i);
         let area = cv.contourArea(cnt);
-        if (area > 50000) {
+        if (area > 40000) {
             let peri = cv.arcLength(cnt, true);
             let approx = new cv.Mat();
             cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
             if (approx.rows === 4 && area > maxArea) {
                 maxArea = area;
-                maxContour = approx;
+                foundContour = approx.clone();
             }
+            approx.delete();
         }
     }
-    
-    // Clean up temporary Mats
-    tempGray.delete(); tempBlurred.delete(); tempEdged.delete(); 
-    tempContours.delete(); tempHierarchy.delete();
-    
-    return maxContour;
+
+    gray.delete(); blurred.delete(); edged.delete(); contours.delete(); hierarchy.delete();
+    return foundContour;
 }
 
-function drawContourOverlay(ctx, contour) {
+function drawOverlay(ctx, contour) {
     ctx.strokeStyle = "#007AFF";
-    ctx.lineWidth = 10;
+    ctx.lineWidth = 8;
+    ctx.lineJoin = "round";
     ctx.beginPath();
-    let points = contour.data32S;
-    ctx.moveTo(points[0], points[1]);
-    for(let i=1; i<4; i++) ctx.lineTo(points[i*2], points[i*2+1]);
+    let pts = contour.data32S;
+    ctx.moveTo(pts[0], pts[1]);
+    ctx.lineTo(pts[2], pts[3]);
+    ctx.lineTo(pts[4], pts[5]);
+    ctx.lineTo(pts[6], pts[7]);
     ctx.closePath();
     ctx.stroke();
 }
 
-// Capture and Export
-captureBtn.onclick = async () => {
+// THE FIX: Manual Capture Event
+captureBtn.addEventListener('click', () => {
+    console.log("Capture clicked!");
     processingModal.style.display = 'flex';
     
-    // 1. Capture Image to Hidden Canvas
+    // Capture from the video stream immediately
     const hiddenCanvas = document.getElementById('hidden-canvas');
     hiddenCanvas.width = video.videoWidth;
     hiddenCanvas.height = video.videoHeight;
-    hiddenCanvas.getContext('2d').drawImage(video, 0, 0);
+    const hCtx = hiddenCanvas.getContext('2d');
+    hCtx.drawImage(video, 0, 0);
 
-    // 2. Generate PDF using jsPDF
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const imgData = hiddenCanvas.toDataURL('image/jpeg', 0.9);
-    
-    pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
-    pdf.save("OpenScan_Document.pdf");
-
-    processingModal.style.display = 'none';
-};
-
-window.onload = initScanner;
+    // Create PDF
+    try {
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const imgData = hiddenCanvas.toDataURL('image/jpeg', 0.8);
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+        pdf.save("My_Scan.pdf");
+        processingModal.style.display = 'none';
+    } catch (e) {
+        alert("PDF Error: " + e.message);
+        processingModal.style.display = 'none';
+    }
+});
