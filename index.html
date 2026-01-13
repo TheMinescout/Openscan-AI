@@ -11,15 +11,14 @@
 <body>
     <div id="app-container">
         <div class="top-bar">
-            <button id="delete-last-btn" class="icon-btn-small" title="Delete Last Scan">🗑️</button>
-            <div class="status-indicator" id="status-msg">Initializing AI...</div>
+            <button id="delete-last-btn" class="icon-btn-small">🗑️</button>
+            <div class="status-indicator" id="status-msg">Scanner Ready</div>
             <button id="export-btn" class="text-btn">Save PDF</button>
         </div>
 
         <video id="video-feed" autoplay playsinline muted></video>
         <canvas id="overlay-canvas"></canvas>
         <canvas id="hidden-canvas" style="display:none;"></canvas>
-
         <div id="freeze-layer"></div>
 
         <div class="controls">
@@ -27,22 +26,22 @@
                 <img id="last-scan-img" src="" style="display:none;">
                 <span id="scan-count">0</span>
             </div>
-            
             <button id="capture-btn"></button>
-            
-            <div class="mode-toggle">
-                <span id="auto-label" class="active">AUTO</span>
-            </div>
+            <div class="spacer"></div>
         </div>
 
         <div id="crop-modal" class="modal">
             <div class="modal-header">
-                <button id="cancel-crop">Cancel</button>
-                <span>Adjust Corners</span>
-                <button id="done-crop" class="primary-text">Done</button>
+                <button id="cancel-crop">Retake</button>
+                <span>Crop Document</span>
+                <button id="done-crop" class="primary-text">Keep</button>
             </div>
-            <div class="crop-container">
+            <div class="crop-container" id="crop-ui-container">
                 <canvas id="crop-canvas"></canvas>
+                <div id="handle-0" class="crop-handle"></div>
+                <div id="handle-1" class="crop-handle"></div>
+                <div id="handle-2" class="crop-handle"></div>
+                <div id="handle-3" class="crop-handle"></div>
             </div>
         </div>
 
@@ -50,8 +49,23 @@
             <div class="modal-header">
                 <button id="close-gallery">← Back</button>
                 <span>Scanned Pages</span>
+                <div style="width:50px"></div>
             </div>
             <div id="gallery-content" class="gallery-grid"></div>
+        </div>
+
+        <div id="editor-modal" class="modal">
+            <div class="modal-header">
+                <button id="close-editor">Close</button>
+                <button id="delete-current-btn" style="color: #FF3B30;">Delete Page</button>
+            </div>
+            <div class="editor-view">
+                <img id="editor-img" src="">
+            </div>
+            <div class="editor-footer">
+                <button class="text-btn" onclick="alert('Filters coming soon!')">Magic Color</button>
+                <button class="text-btn" onclick="alert('Rotate coming soon!')">Rotate</button>
+            </div>
         </div>
     </div>
     <script src="js/app.js"></script>
