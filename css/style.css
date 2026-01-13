@@ -1,5 +1,6 @@
 :root {
     --primary: #007AFF;
+    --danger: #FF3B30;
     --panel: rgba(20, 20, 20, 0.95);
 }
 
@@ -9,17 +10,11 @@ body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000;
 
 #video-feed, #overlay-canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
 
-/* Animation Layer */
+/* Freeze Animation */
 #freeze-layer {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    z-index: 100;
-    pointer-events: none;
-    background-size: cover;
-    background-position: center;
-    display: none;
-    border: 2px solid white;
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 100; pointer-events: none; background-size: cover; background-position: center;
+    display: none; border: 2px solid white;
 }
 
 .fly-to-corner {
@@ -30,19 +25,15 @@ body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000;
 @keyframes zoomAndFly {
     0% { transform: scale(1); opacity: 1; border-radius: 0; }
     40% { transform: scale(0.8); opacity: 1; }
-    100% { 
-        transform: scale(0.1) translate(-450%, 450%); 
-        opacity: 0; 
-        border-radius: 80px;
-    }
+    100% { transform: scale(0.1) translate(-450%, 450%); opacity: 0; border-radius: 80px; }
 }
 
-/* UI Controls */
+/* UI Elements */
 .top-bar {
     position: absolute; top: 0; width: 100%; height: 70px;
     display: flex; justify-content: space-between; align-items: center;
     padding: 0 20px; z-index: 110; box-sizing: border-box;
-    background: linear-gradient(rgba(0,0,0,0.7), transparent);
+    background: linear-gradient(rgba(0,0,0,0.8), transparent);
 }
 
 .controls {
@@ -60,7 +51,7 @@ body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000;
 
 #scan-count {
     position: absolute; top: -5px; right: -5px; background: var(--primary);
-    color: white; font-size: 12px; padding: 2px 8px; border-radius: 12px; font-weight: bold;
+    color: white; font-size: 11px; padding: 2px 7px; border-radius: 12px; font-weight: bold;
 }
 
 #capture-btn {
@@ -68,22 +59,25 @@ body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000;
     border: 6px solid rgba(255,255,255,0.3); outline: none; cursor: pointer;
 }
 
-#capture-btn:active { transform: scale(0.9); }
-
-.text-btn { background: var(--primary); border: none; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
-
-/* Gallery */
+/* Crop & Gallery Modals */
 .modal {
     display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     background: #000; z-index: 200; flex-direction: column;
 }
 
-.modal-header { padding: 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
-#close-gallery { background: none; border: none; color: white; font-size: 24px; cursor: pointer; }
-
-.gallery-grid {
-    flex: 1; display: grid; grid-template-columns: repeat(3, 1fr);
-    gap: 12px; padding: 15px; overflow-y: auto;
+.modal-header { 
+    padding: 15px 20px; display: flex; justify-content: space-between; 
+    align-items: center; background: #1a1a1a; border-bottom: 1px solid #333;
 }
 
-.gallery-grid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 8px; border: 1px solid #444; }
+.modal-header button { background: none; border: none; color: white; font-size: 16px; cursor: pointer; }
+.modal-header .primary-text { color: var(--primary); font-weight: bold; }
+
+.crop-container { flex: 1; display: flex; justify-content: center; align-items: center; position: relative; overflow: hidden; }
+#crop-canvas { max-width: 90%; max-height: 80%; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+
+.gallery-grid { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 15px; overflow-y: auto; }
+.gallery-grid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 8px; }
+
+.icon-btn-small { background: rgba(255,255,255,0.1); border: none; font-size: 18px; padding: 8px; border-radius: 50%; cursor: pointer; }
+.text-btn { background: var(--primary); border: none; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; }
