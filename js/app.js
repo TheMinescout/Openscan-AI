@@ -16,19 +16,23 @@ async function startCamera() {
 
 // 2. The Processing Loop (Simplified)
 function processFrame() {
-    if (typeof cv !== 'undefined' && video.readyState === video.HAVE_ENOUGH_DATA) {
-        let src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
-        let cap = new cv.VideoCapture(video);
-        cap.read(src);
+    let src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
+    cap.read(src);
+
+    let docContour = Scanner.findDocumentContour(src);
+
+    if (docContour) {
+        // Draw the outline in blue for the user to see
+        let color = new cv.Scalar(0, 255, 255, 255); // Cyan
+        cv.drawContours(src, docContour, -1, color, 3);
         
-        // Here you would add OpenCV code to:
-        // - Convert to Grayscale
-        // - Apply Canny Edge Detection
-        // - Find Contours
-        // - Draw the blue box overlay on 'canvas'
-        
-        src.delete();
+        // If the user clicks capture, run the transform!
+        // let finalDoc = Scanner.transformPerspective(src, docContour);
+        // let cleanDoc = Scanner.applyMagicFilter(finalDoc);
     }
+
+    cv.imshow('overlay-canvas', src);
+    src.delete();
     requestAnimationFrame(processFrame);
 }
 
