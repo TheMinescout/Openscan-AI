@@ -1,108 +1,88 @@
-/* Core Styling */
 :root {
-    --primary-accent: #007AFF; /* iOS Blue */
+    --primary-accent: #007AFF;
     --success-green: #34C759;
+    --warning-yellow: #FFD60A;
     --bg-dark: #000000;
     --panel-alpha: rgba(25, 25, 25, 0.85);
 }
 
 body, html {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
     background-color: var(--bg-dark);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    overflow: hidden; /* Prevent scrolling in the scanner app */
-    color: white;
+    font-family: -apple-system, system-ui, sans-serif;
+    overflow: hidden; color: white;
 }
 
-/* The Scanner Container */
 #app-container {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
+    position: relative; width: 100vw; height: 100vh;
+    display: flex; flex-direction: column;
 }
 
-/* Video & Canvas Overlay */
 #video-feed {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    object-fit: cover; /* Fill screen without stretching */
-    z-index: 1;
+    position: absolute; width: 100%; height: 100%;
+    object-fit: cover; z-index: 1;
 }
 
 #overlay-canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 2;
-    pointer-events: none; /* Let clicks pass through to the video if needed */
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%; z-index: 2;
+    pointer-events: none;
 }
 
-/* UI Controls Overlay */
-.controls {
-    position: absolute;
-    bottom: 0;
-    width: 100%;
-    padding: 40px 0;
-    background: linear-gradient(transparent, var(--panel-alpha));
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 10;
-}
-
-#capture-btn {
-    width: 75px;
-    height: 75px;
-    border-radius: 50%;
-    background-color: white;
-    border: 5px solid rgba(255, 255, 255, 0.3);
-    cursor: pointer;
-    transition: transform 0.1s ease, background-color 0.2s;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    box-shadow: 0 0 15px rgba(0,0,0,0.5);
-}
-
-#capture-btn:active {
-    transform: scale(0.9);
-    background-color: #ddd;
-}
-
-#capture-btn::after {
-    content: "";
-    width: 55px;
-    height: 55px;
-    border-radius: 50%;
-    border: 2px solid black;
-}
-
-/* Top Bar (Status/Flash) */
 .top-bar {
-    position: absolute;
-    top: 0;
-    width: 100%;
-    height: 60px;
+    position: absolute; top: 0; width: 100%; height: 70px;
     background: linear-gradient(var(--panel-alpha), transparent);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 20px;
-    z-index: 10;
+    display: flex; justify-content: space-between;
+    align-items: center; padding: 0 20px; z-index: 10;
+    box-sizing: border-box;
 }
 
 .status-indicator {
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    color: var(--primary-accent);
-    text-transform: uppercase;
+    font-size: 14px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
 }
+
+.controls {
+    position: absolute; bottom: 0; width: 100%;
+    padding: 50px 0;
+    background: linear-gradient(transparent, var(--panel-alpha));
+    display: flex; justify-content: center;
+    align-items: center; z-index: 10;
+}
+
+#capture-btn {
+    width: 80px; height: 80px;
+    border-radius: 50%; background-color: white;
+    border: 6px solid rgba(255, 255, 255, 0.3);
+    cursor: pointer; position: relative;
+    transition: transform 0.1s;
+}
+
+#capture-btn:active { transform: scale(0.9); }
+
+.thumbnail-btn {
+    width: 50px; height: 50px;
+    border: 2px solid white; border-radius: 8px;
+    margin-right: 40px; background: #333;
+}
+
+.icon-btn { font-size: 28px; margin-left: 40px; cursor: pointer; }
+
+/* Modal & Spinner */
+.modal {
+    display: none; position: fixed; z-index: 100;
+    left: 0; top: 0; width: 100%; height: 100%;
+    background-color: rgba(0,0,0,0.9);
+    justify-content: center; align-items: center;
+}
+
+.spinner {
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-left-color: var(--primary-accent);
+    width: 40px; height: 40px; border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
