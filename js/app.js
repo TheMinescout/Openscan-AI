@@ -1,109 +1,117 @@
 let scannedDocs = [];
+let currentCropImg = null;
+let corners = [{x: 50, y: 50}, {x: 250, y: 50}, {x: 250, y: 350}, {x: 50, y: 350}]; // Default points
+
 const video = document.getElementById('video-feed');
 const canvas = document.getElementById('overlay-canvas');
 const freezeLayer = document.getElementById('freeze-layer');
 const lastScanImg = document.getElementById('last-scan-img');
 const scanCountLabel = document.getElementById('scan-count');
-const galleryModal = document.getElementById('gallery-modal');
 const statusMsg = document.getElementById('status-msg');
 
 async function init() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment", width: { ideal: 1280 } }, 
-            audio: false 
+            video: { facingMode: "environment", width: { ideal: 1920 } }, audio: false 
         });
         video.srcObject = stream;
-        video.onloadedmetadata = () => {
-            statusMsg.innerText = "Scanner Ready";
-            startRenderLoop();
-        };
-    } catch (e) {
-        statusMsg.innerText = "Camera access denied";
-    }
+        video.onloadedmetadata = () => startRenderLoop();
+    } catch (e) { statusMsg.innerText = "Camera Denied"; }
 }
 
 function startRenderLoop() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    // Basic loop for now; OpenCV integration remains the same as before
+    // (OpenCV detection logic would go here to update overlay-canvas)
     requestAnimationFrame(startRenderLoop);
 }
 
-// CAPTURE LOGIC
+// DELETE LAST SCAN
+document.getElementById('delete-last-btn').addEventListener('click', () => {
+    if (scannedDocs.length > 0) {
+        if (confirm("Delete the last page?")) {
+            scannedDocs.pop();
+            updateGalleryPreview();
+        }
+    }
+});
+
+function updateGalleryPreview() {
+    if (scannedDocs.length > 0) {
+        lastScanImg.src = scannedDocs[scannedDocs.length - 1];
+        lastScanImg.style.display = 'block';
+    } else {
+        lastScanImg.style.display = 'none';
+    }
+    scanCountLabel.innerText = scannedDocs.length;
+}
+
+// CAPTURE & CROP LOGIC
 document.getElementById('capture-btn').addEventListener('click', () => {
-    // 1. Setup hidden canvas for full res capture
     const hiddenCanvas = document.getElementById('hidden-canvas');
     hiddenCanvas.width = video.videoWidth;
     hiddenCanvas.height = video.videoHeight;
     const hCtx = hiddenCanvas.getContext('2d');
     hCtx.drawImage(video, 0, 0);
+    
+    const rawImg = hiddenCanvas.toDataURL('image/jpeg', 0.9);
+    currentCropImg = rawImg;
+    
+    // Switch to Crop Modal
+    showCropModal(rawImg);
+});
 
-    const imgData = hiddenCanvas.toDataURL('image/jpeg', 0.8);
+function showCropModal(imgSrc) {
+    const modal = document.getElementById('crop-modal');
+    const c = document.getElementById('crop-canvas');
+    const ctx = c.getContext('2d');
+    const img = new Image();
     
-    // 2. Add to internal storage
-    scannedDocs.push(imgData);
+    img.onload = () => {
+        c.width = img.width / 4; // Scale down for UI
+        c.height = img.height / 4;
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        
+        // Draw initial crop points
+        ctx.strokeStyle = "#007AFF";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(50, 50, c.width - 100, c.height - 100);
+        
+        modal.style.display = 'flex';
+    };
+    img.src = imgSrc;
+}
+
+// DONE CROPPING
+document.getElementById('done-crop').addEventListener('click', () => {
+    // For now, we save the full image. 
+    // In next step, we add the OpenCV WarpPerspective here.
+    scannedDocs.push(currentCropImg);
     
-    // 3. EXECUTE ANIMATION
-    // Apply the image to the freeze layer background
-    freezeLayer.style.backgroundImage = `url(${imgData})`;
-    
-    // Reset animation state
+    // Animation
+    freezeLayer.style.backgroundImage = `url(${currentCropImg})`;
     freezeLayer.classList.remove('fly-to-corner');
-    void freezeLayer.offsetWidth; // Force CSS reflow to restart animation
+    void freezeLayer.offsetWidth;
     freezeLayer.classList.add('fly-to-corner');
-
-    // 4. Update Preview UI after animation finishes
-    setTimeout(() => {
-        lastScanImg.src = imgData;
-        lastScanImg.style.display = 'block';
-        scanCountLabel.innerText = scannedDocs.length;
-    }, 750);
-});
-
-// GALLERY LOGIC
-document.getElementById('gallery-trigger').addEventListener('click', () => {
-    if (scannedDocs.length === 0) return;
-    const grid = document.getElementById('gallery-content');
-    grid.innerHTML = '';
     
-    scannedDocs.forEach((img, index) => {
-        const wrapper = document.createElement('div');
-        wrapper.style.position = 'relative';
-        
-        const el = document.createElement('img');
-        el.src = img;
-        el.onclick = () => {
-            const win = window.open();
-            win.document.write(`<img src="${img}" style="width:100%">`);
-        };
-        
-        wrapper.appendChild(el);
-        grid.appendChild(wrapper);
-    });
-    galleryModal.style.display = 'flex';
+    document.getElementById('crop-modal').style.display = 'none';
+    updateGalleryPreview();
 });
 
-document.getElementById('close-gallery').addEventListener('click', () => {
-    galleryModal.style.display = 'none';
+document.getElementById('cancel-crop').addEventListener('click', () => {
+    document.getElementById('crop-modal').style.display = 'none';
 });
 
-// EXPORT LOGIC
+// PDF EXPORT
 document.getElementById('export-btn').addEventListener('click', () => {
-    if (scannedDocs.length === 0) return alert("No documents to save.");
-    
-    statusMsg.innerText = "Generating PDF...";
+    if (scannedDocs.length === 0) return;
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF('p', 'mm', 'a4');
-
-    scannedDocs.forEach((img, index) => {
-        if (index > 0) pdf.addPage();
-        // Calculate aspect ratio to fit A4
+    scannedDocs.forEach((img, i) => {
+        if (i > 0) pdf.addPage();
         pdf.addImage(img, 'JPEG', 0, 0, 210, 297);
     });
-
-    pdf.save(`Scan_${new Date().getTime()}.pdf`);
-    statusMsg.innerText = "PDF Saved!";
+    pdf.save(`OpenScan_${Date.now()}.pdf`);
 });
 
 window.onload = init;
