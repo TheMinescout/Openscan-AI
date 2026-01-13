@@ -1,88 +1,70 @@
 :root {
-    --primary-accent: #007AFF;
-    --success-green: #34C759;
-    --warning-yellow: #FFD60A;
-    --bg-dark: #000000;
-    --panel-alpha: rgba(25, 25, 25, 0.85);
+    --primary: #007AFF;
+    --panel: rgba(20, 20, 20, 0.9);
 }
 
-body, html {
-    margin: 0; padding: 0;
-    width: 100%; height: 100%;
-    background-color: var(--bg-dark);
-    font-family: -apple-system, system-ui, sans-serif;
-    overflow: hidden; color: white;
-}
+body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; font-family: sans-serif; overflow: hidden; }
 
-#app-container {
-    position: relative; width: 100vw; height: 100vh;
-    display: flex; flex-direction: column;
-}
+#app-container { position: relative; width: 100vw; height: 100vh; }
 
-#video-feed {
+#video-feed, #overlay-canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+
+/* Freeze & Fly Animation */
+.freeze-frame {
     position: absolute; width: 100%; height: 100%;
-    object-fit: cover; z-index: 1;
+    z-index: 50; pointer-events: none;
+    background-size: cover; background-position: center;
+    display: none; box-shadow: 0 0 20px rgba(0,0,0,0.5);
 }
 
-#overlay-canvas {
-    position: absolute; top: 0; left: 0;
-    width: 100%; height: 100%; z-index: 2;
-    pointer-events: none;
+.fly-to-corner {
+    display: block;
+    animation: zoomAndFly 0.8s cubic-bezier(0.45, 0, 0.55, 1) forwards;
 }
 
-.top-bar {
-    position: absolute; top: 0; width: 100%; height: 70px;
-    background: linear-gradient(var(--panel-alpha), transparent);
-    display: flex; justify-content: space-between;
-    align-items: center; padding: 0 20px; z-index: 10;
-    box-sizing: border-box;
+@keyframes zoomAndFly {
+    0% { transform: scale(1); opacity: 1; border-radius: 0; }
+    30% { transform: scale(0.9); opacity: 1; }
+    100% { transform: scale(0.1) translate(-400%, 400%); opacity: 0; border-radius: 50px; }
 }
 
-.status-indicator {
-    font-size: 14px; font-weight: 700;
-    letter-spacing: 1px; text-transform: uppercase;
-}
-
+/* Controls */
 .controls {
-    position: absolute; bottom: 0; width: 100%;
-    padding: 50px 0;
-    background: linear-gradient(transparent, var(--panel-alpha));
-    display: flex; justify-content: center;
-    align-items: center; z-index: 10;
+    position: absolute; bottom: 0; width: 100%; height: 120px;
+    display: flex; align-items: center; justify-content: space-around;
+    background: linear-gradient(transparent, var(--panel)); z-index: 60;
+}
+
+.thumbnail-preview {
+    width: 55px; height: 55px; border: 2px solid white; border-radius: 8px;
+    overflow: hidden; background: #222; position: relative; cursor: pointer;
+}
+
+#last-scan-img { width: 100%; height: 100%; object-fit: cover; }
+
+#scan-count {
+    position: absolute; top: -8px; right: -8px; background: var(--primary);
+    color: white; font-size: 12px; padding: 2px 6px; border-radius: 10px; font-weight: bold;
 }
 
 #capture-btn {
-    width: 80px; height: 80px;
-    border-radius: 50%; background-color: white;
-    border: 6px solid rgba(255, 255, 255, 0.3);
-    cursor: pointer; position: relative;
-    transition: transform 0.1s;
+    width: 70px; height: 70px; border-radius: 50%; background: white;
+    border: 5px solid rgba(255,255,255,0.3); outline: none;
 }
 
-#capture-btn:active { transform: scale(0.9); }
-
-.thumbnail-btn {
-    width: 50px; height: 50px;
-    border: 2px solid white; border-radius: 8px;
-    margin-right: 40px; background: #333;
-}
-
-.icon-btn { font-size: 28px; margin-left: 40px; cursor: pointer; }
-
-/* Modal & Spinner */
+/* Gallery Modal */
 .modal {
-    display: none; position: fixed; z-index: 100;
-    left: 0; top: 0; width: 100%; height: 100%;
-    background-color: rgba(0,0,0,0.9);
-    justify-content: center; align-items: center;
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: #000; z-index: 100; flex-direction: column;
 }
 
-.spinner {
-    border: 4px solid rgba(255, 255, 255, 0.1);
-    border-left-color: var(--primary-accent);
-    width: 40px; height: 40px; border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 20px;
+.modal-header { padding: 20px; display: flex; align-items: center; background: #111; }
+.text-btn { background: none; border: none; color: var(--primary); font-size: 16px; font-weight: bold; }
+#close-gallery { background: none; border: none; color: white; font-size: 18px; margin-right: 20px; }
+
+.gallery-grid {
+    flex: 1; display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 10px; padding: 10px; overflow-y: auto;
 }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+.gallery-grid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 4px; }
