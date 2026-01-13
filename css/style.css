@@ -1,0 +1,108 @@
+/* Core Styling */
+:root {
+    --primary-accent: #007AFF; /* iOS Blue */
+    --success-green: #34C759;
+    --bg-dark: #000000;
+    --panel-alpha: rgba(25, 25, 25, 0.85);
+}
+
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--bg-dark);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    overflow: hidden; /* Prevent scrolling in the scanner app */
+    color: white;
+}
+
+/* The Scanner Container */
+#app-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Video & Canvas Overlay */
+#video-feed {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Fill screen without stretching */
+    z-index: 1;
+}
+
+#overlay-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none; /* Let clicks pass through to the video if needed */
+}
+
+/* UI Controls Overlay */
+.controls {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    padding: 40px 0;
+    background: linear-gradient(transparent, var(--panel-alpha));
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+}
+
+#capture-btn {
+    width: 75px;
+    height: 75px;
+    border-radius: 50%;
+    background-color: white;
+    border: 5px solid rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    transition: transform 0.1s ease, background-color 0.2s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 0 15px rgba(0,0,0,0.5);
+}
+
+#capture-btn:active {
+    transform: scale(0.9);
+    background-color: #ddd;
+}
+
+#capture-btn::after {
+    content: "";
+    width: 55px;
+    height: 55px;
+    border-radius: 50%;
+    border: 2px solid black;
+}
+
+/* Top Bar (Status/Flash) */
+.top-bar {
+    position: absolute;
+    top: 0;
+    width: 100%;
+    height: 60px;
+    background: linear-gradient(var(--panel-alpha), transparent);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+    z-index: 10;
+}
+
+.status-indicator {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--primary-accent);
+    text-transform: uppercase;
+}
