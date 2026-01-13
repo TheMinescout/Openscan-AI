@@ -5,36 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>OpenScan-AI | Free Web Scanner</title>
     <link rel="stylesheet" href="css/style.css">
-    <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
     <script src="https://unpkg.com/tesseract.js@v5.0.2/dist/tesseract.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
 </head>
 <body>
     <div id="app-container">
         <div class="top-bar">
-            <div class="status-indicator" id="status-msg">Initializing AI...</div>
-            <div class="settings-icon">⚙️</div>
+            <div class="status-indicator" id="status-msg">Loading AI Engine...</div>
         </div>
 
-        <video id="video-feed" autoplay playsinline></video>
+        <video id="video-feed" autoplay playsinline muted></video>
         <canvas id="overlay-canvas"></canvas>
-        
         <canvas id="hidden-canvas" style="display:none;"></canvas>
 
         <div class="controls">
-            <div id="gallery-preview" class="thumbnail-btn"></div>
             <button id="capture-btn" title="Capture Document"></button>
-            <div id="flash-toggle" class="icon-btn">⚡</div>
         </div>
 
         <div id="processing-modal" class="modal">
             <div class="modal-content">
                 <div class="spinner"></div>
-                <p>Enhancing & Generating PDF...</p>
+                <p id="modal-text">Processing Document...</p>
             </div>
         </div>
     </div>
-
     <script src="js/app.js"></script>
 </body>
 </html>
