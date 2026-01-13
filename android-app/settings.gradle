@@ -1,0 +1,2 @@
+rootProject.name = "OpenScan-AI"
+include ':app'
