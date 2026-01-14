@@ -1,29 +1,68 @@
-<div id="app-container">
-    <video id="video-feed" autoplay playsinline muted></video>
-    <canvas id="overlay-canvas"></canvas>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>OpenScan-AI Pro</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#007AFF">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="assets/icon-192.png">
 
-    <div class="ui-layer">
-        <div class="top-nav">
-            <button id="delete-last-btn" class="glass-btn" title="Delete Last">🗑️</button>
-            <div id="status-msg">Ready</div>
-            <button id="settings-btn" class="glass-btn">⚙️</button>
+    <link rel="stylesheet" href="css/style.css">
+
+    <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+    <div id="app-container">
+        <video id="video-feed" autoplay playsinline muted></video>
+        
+        <canvas id="overlay-canvas"></canvas>
+
+        <div class="ui-layer">
+            <div class="top-nav">
+                <button id="delete-last-btn" class="glass-btn" title="Delete Last Scan">🗑️</button>
+                <div id="status-msg" class="status-pill">AI Initializing...</div>
+                <button id="settings-btn" class="glass-btn" title="Settings">⚙️</button>
+            </div>
+
+            <div class="bottom-nav">
+                <div id="gallery-trigger" class="preview-box">
+                    <img id="last-scan-img" src="" style="display:none;">
+                    <div id="scan-count">0</div>
+                </div>
+
+                <div class="shutter-outer">
+                    <button id="capture-btn" aria-label="Capture Document"></button>
+                </div>
+
+                <button id="export-btn" class="glass-btn primary-action">PDF</button>
+            </div>
         </div>
 
-        <div class="bottom-nav">
-            <div id="gallery-trigger" class="preview-box">
-                <img id="last-scan-img" src="" style="display:none;">
-                <span id="scan-count">0</span>
-            </div>
+        <div id="freeze-layer"></div>
 
-            <div class="shutter-outer">
-                <button id="capture-btn"></button>
+        <div id="crop-modal" class="modal">
+            <div class="modal-header">
+                <button id="cancel-crop">Retake</button>
+                <span class="modal-title">Adjust Corners</span>
+                <button id="done-crop" class="primary-text">Warp & Keep</button>
             </div>
-
-            <div class="mode-indicator">
-                <span>AUTO</span>
+            <div class="crop-container" id="crop-ui-container">
+                <canvas id="crop-canvas"></canvas>
+                <div id="handle-0" class="crop-handle" data-id="0"></div>
+                <div id="handle-1" class="crop-handle" data-id="1"></div>
+                <div id="handle-2" class="crop-handle" data-id="2"></div>
+                <div id="handle-3" class="crop-handle" data-id="3"></div>
             </div>
         </div>
     </div>
 
-    <div id="freeze-layer"></div>
-</div>
+    <canvas id="hidden-canvas" style="display:none;"></canvas>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
