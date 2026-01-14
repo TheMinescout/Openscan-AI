@@ -1,7 +1,7 @@
 // --- STATE MANAGEMENT ---
 let scannedDocs = [];
-let currentRawImg = null; // High-res original
-let previewImgObj = null; // The loaded image object for the crop preview
+let currentRawImg = null;
+let previewImgObj = null;
 let currentEditIndex = -1;
 
 // DOM Elements
@@ -10,7 +10,7 @@ const freezeLayer = document.getElementById('freeze-layer');
 const statusMsg = document.getElementById('status-msg');
 const scanCount = document.getElementById('scan-count');
 const lastScanImg = document.getElementById('last-scan-img');
-const uiLayer = document.querySelector('.ui-layer'); // The overlay buttons
+const uiLayer = document.querySelector('.ui-layer');
 
 // --- 1. STARTUP ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -31,9 +31,7 @@ async function startCamera() {
             statusMsg.style.background = "rgba(0, 200, 0, 0.4)";
         };
     } catch (e) {
-        console.error(e);
-        statusMsg.innerText = "Check Permission";
-        statusMsg.style.background = "rgba(255, 0, 0, 0.4)";
+        statusMsg.innerText = "Camera Denied";
     }
 }
 
@@ -41,36 +39,24 @@ function setupButtons() {
     document.getElementById('capture-btn').onclick = captureImage;
     document.getElementById('done-crop').onclick = finishCrop;
     document.getElementById('cancel-crop').onclick = () => toggleModal('crop-modal', false);
-
     document.getElementById('gallery-trigger').onclick = openGallery;
     document.getElementById('close-gallery').onclick = () => toggleModal('gallery-modal', false);
-    
     document.getElementById('close-editor').onclick = () => toggleModal('editor-modal', false);
     document.getElementById('delete-page-btn').onclick = deleteCurrentPage;
-
     document.getElementById('settings-btn').onclick = () => toggleModal('settings-modal', true);
     document.getElementById('close-settings').onclick = () => toggleModal('settings-modal', false);
 }
 
-// --- 2. VISIBILITY MANAGER ---
 function toggleModal(modalId, show) {
     const modal = document.getElementById(modalId);
     if (!modal) return;
-
-    if (show) {
-        modal.style.display = 'flex';
-        // HIDE the main camera buttons when a modal is open
-        uiLayer.style.display = 'none';
-    } else {
-        modal.style.display = 'none';
-        // SHOW the main camera buttons when going back to camera
-        uiLayer.style.display = 'flex';
-    }
+    modal.style.display = show ? 'flex' : 'none';
+    // Hide UI layer when modal is open to prevent "ghost clicks"
+    if(uiLayer) uiLayer.style.display = show ? 'none' : 'flex';
 }
 
-// --- 3. CAPTURE & PREPARE ---
+// --- 2. CAPTURE & SETUP ---
 function captureImage() {
-    // Flash
     video.style.opacity = "0.5";
     setTimeout(() => video.style.opacity = "1", 100);
 
@@ -90,83 +76,92 @@ function prepareCropModal(imgSrc) {
     previewImgObj = new Image();
 
     previewImgObj.onload = () => {
-        // Fit to screen logic
-        const maxW = window.innerWidth * 0.95;
-        const maxH = (window.innerHeight - 80) * 0.95;
+        // 1. Calculate dimensions to fit screen (90% width, 80% height)
+        const maxW = window.innerWidth * 0.9;
+        const maxH = window.innerHeight * 0.8;
         const scale = Math.min(maxW / previewImgObj.width, maxH / previewImgObj.height);
         
-        const finalW = previewImgObj.width * scale;
-        const finalH = previewImgObj.height * scale;
+        const finalW = Math.floor(previewImgObj.width * scale);
+        const finalH = Math.floor(previewImgObj.height * scale);
+        
+        // 2. Set Container & Canvas size EXACTLY the same
+        container.style.width = finalW + "px";
+        container.style.height = finalH + "px";
         
         c.width = finalW;
         c.height = finalH;
-        container.style.width = finalW + "px";
-        container.style.height = finalH + "px";
         container.dataset.scale = scale;
 
         toggleModal('crop-modal', true);
         
-        // Setup handles and Draw the first set of lines
+        // 3. Initialize Handles & Draw
         setupHandles(finalW, finalH);
         drawCropLines(); 
     };
     previewImgObj.src = imgSrc;
 }
 
-// --- 4. DRAWING & DRAGGING ---
+// --- 3. THE FIX: COORDINATE SYNC ---
+function setupHandles(w, h) {
+    const handles = document.querySelectorAll('.crop-handle');
+    const container = document.getElementById('crop-ui-container');
+    
+    // Default: 10% in from corners
+    const positions = [
+        {x: w * 0.2, y: h * 0.2}, // TL
+        {x: w * 0.8, y: h * 0.2}, // TR
+        {x: w * 0.8, y: h * 0.8}, // BR
+        {x: w * 0.2, y: h * 0.8}  // BL
+    ];
+
+    handles.forEach((handle, i) => {
+        // We set the handle's CENTER to the position.
+        // Since handle is 30px, we subtract 15px.
+        handle.style.left = (positions[i].x - 15) + 'px';
+        handle.style.top = (positions[i].y - 15) + 'px';
+
+        // Clear old listeners
+        handle.onmousedown = null; handle.ontouchstart = null;
+        
+        // Add new listeners
+        handle.onmousedown = (e) => startDrag(e, handle, container, false);
+        handle.ontouchstart = (e) => startDrag(e, handle, container, true);
+    });
+}
+
 function drawCropLines() {
     const c = document.getElementById('crop-canvas');
     const ctx = c.getContext('2d');
     const handles = document.querySelectorAll('.crop-handle');
-    
-    // 1. Clear and Redraw Image (Clean slate)
+
+    // 1. Redraw Image
     ctx.clearRect(0, 0, c.width, c.height);
     ctx.drawImage(previewImgObj, 0, 0, c.width, c.height);
 
-    // 2. Get handle centers
-    // We add 16px (half of 32px width) to get center of handle
-    const p1 = { x: parseFloat(handles[0].style.left) + 16, y: parseFloat(handles[0].style.top) + 16 };
-    const p2 = { x: parseFloat(handles[1].style.left) + 16, y: parseFloat(handles[1].style.top) + 16 };
-    const p3 = { x: parseFloat(handles[2].style.left) + 16, y: parseFloat(handles[2].style.top) + 16 };
-    const p4 = { x: parseFloat(handles[3].style.left) + 16, y: parseFloat(handles[3].style.top) + 16 };
+    // 2. Calculate Centers
+    // We get the visual "Left" and add 15 to find the mathematical "Center"
+    const p1 = { x: parseFloat(handles[0].style.left) + 15, y: parseFloat(handles[0].style.top) + 15 };
+    const p2 = { x: parseFloat(handles[1].style.left) + 15, y: parseFloat(handles[1].style.top) + 15 };
+    const p3 = { x: parseFloat(handles[2].style.left) + 15, y: parseFloat(handles[2].style.top) + 15 };
+    const p4 = { x: parseFloat(handles[3].style.left) + 15, y: parseFloat(handles[3].style.top) + 15 };
 
-    // 3. Draw Blue Connecting Lines
+    // 3. Draw Lines (Blue)
     ctx.beginPath();
     ctx.lineWidth = 3;
-    ctx.strokeStyle = '#007AFF'; // iOS Blue
+    ctx.strokeStyle = '#007AFF';
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
     ctx.lineTo(p3.x, p3.y);
     ctx.lineTo(p4.x, p4.y);
-    ctx.closePath(); // Connects p4 back to p1
+    ctx.closePath();
     ctx.stroke();
-
-    // Optional: Draw a semi-transparent fill inside
-    ctx.fillStyle = "rgba(0, 122, 255, 0.1)";
-    ctx.fill();
-}
-
-function setupHandles(w, h) {
-    const handles = document.querySelectorAll('.crop-handle');
-    const container = document.getElementById('crop-ui-container');
-    const padding = 20;
     
-    // Initial Positions
-    const positions = [
-        {x: padding, y: padding},
-        {x: w - padding, y: padding},
-        {x: w - padding, y: h - padding},
-        {x: padding, y: h - padding}
-    ];
-
-    handles.forEach((handle, i) => {
-        // -16 centers the handle (32px / 2)
-        handle.style.left = (positions[i].x - 16) + 'px';
-        handle.style.top = (positions[i].y - 16) + 'px';
-        
-        handle.onmousedown = null; handle.ontouchstart = null;
-        handle.onmousedown = (e) => startDrag(e, handle, container, false);
-        handle.ontouchstart = (e) => startDrag(e, handle, container, true);
+    // 4. Draw Corner Circles (White Dots at corners for precision)
+    [p1, p2, p3, p4].forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
     });
 }
 
@@ -179,17 +174,18 @@ function startDrag(e, handle, container, isTouch) {
         const clientX = isTouch ? event.touches[0].clientX : event.clientX;
         const clientY = isTouch ? event.touches[0].clientY : event.clientY;
 
-        let x = clientX - rect.left - 16; // -16 to center drag on finger
-        let y = clientY - rect.top - 16;
+        // Calculate Position relative to container
+        let x = clientX - rect.left;
+        let y = clientY - rect.top;
 
-        // Bounds check
-        x = Math.max(-16, Math.min(x, container.offsetWidth - 16));
-        y = Math.max(-16, Math.min(y, container.offsetHeight - 16));
+        // Constraint: Keep inside box
+        x = Math.max(0, Math.min(x, container.offsetWidth));
+        y = Math.max(0, Math.min(y, container.offsetHeight));
 
-        handle.style.left = x + 'px';
-        handle.style.top = y + 'px';
+        // Apply Position (Subtract 15 to center the handle visually)
+        handle.style.left = (x - 15) + 'px';
+        handle.style.top = (y - 15) + 'px';
 
-        // REDRAW LINES ON EVERY MOVE
         requestAnimationFrame(drawCropLines);
     }
 
@@ -202,21 +198,21 @@ function startDrag(e, handle, container, isTouch) {
     else { document.onmousemove = move; document.onmouseup = stop; }
 }
 
-// --- 5. FINISH CROP ---
+// --- 4. FINISH CROP ---
 function finishCrop() {
     toggleModal('crop-modal', false);
-
+    
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
     const scale = parseFloat(container.dataset.scale);
 
-    // Get positions (+16 to adjust for handle center)
-    let x1 = (parseFloat(handles[0].style.left) + 16);
-    let y1 = (parseFloat(handles[0].style.top) + 16);
-    let x3 = (parseFloat(handles[2].style.left) + 16);
-    let y3 = (parseFloat(handles[2].style.top) + 16);
+    // Get Points (+15 offset)
+    let x1 = (parseFloat(handles[0].style.left) + 15);
+    let y1 = (parseFloat(handles[0].style.top) + 15);
+    let x3 = (parseFloat(handles[2].style.left) + 15);
+    let y3 = (parseFloat(handles[2].style.top) + 15);
 
-    // Scale up
+    // Scale to original size
     let realX = x1 / scale;
     let realY = y1 / scale;
     let realW = (x3 - x1) / scale;
@@ -251,7 +247,7 @@ function saveScan(imgData) {
     }, 700);
 }
 
-// --- 6. HELPERS ---
+// --- 5. HELPERS ---
 function openGallery() {
     if (scannedDocs.length === 0) return;
     const grid = document.getElementById('gallery-grid');
