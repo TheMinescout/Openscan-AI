@@ -58,6 +58,44 @@
                 <div id="handle-2" class="crop-handle" data-id="2"></div>
                 <div id="handle-3" class="crop-handle" data-id="3"></div>
             </div>
+            <div id="gallery-modal" class="modal">
+        <div class="modal-header">
+            <button id="close-gallery">← Back</button>
+            <span class="modal-title">Scanned Pages</span>
+            <div style="width: 30px;"></div> </div>
+        <div id="gallery-grid" class="gallery-grid"></div>
+    </div>
+
+    <div id="editor-modal" class="modal" style="background: #000;">
+        <div class="modal-header">
+            <button id="close-editor">Close</button>
+            <span class="modal-title">Edit Page</span>
+            <button id="delete-page-btn" style="color: var(--danger);">Delete</button>
+        </div>
+        <div class="editor-view">
+            <img id="editor-img" src="">
+        </div>
+    </div>
+
+    <div id="settings-modal" class="modal">
+        <div class="modal-header">
+            <button id="close-settings">Done</button>
+            <span class="modal-title">Settings</span>
+            <div style="width: 30px;"></div>
+        </div>
+        <div class="settings-content" style="padding: 20px; color: white;">
+            <div class="setting-item">
+                <label>High Resolution</label>
+                <input type="checkbox" checked>
+            </div>
+            <hr style="border-color: #333; margin: 15px 0;">
+            <div class="setting-item">
+                <label>Auto-Enhance</label>
+                <input type="checkbox" checked>
+            </div>
+            <p style="margin-top: 20px; color: #666; font-size: 12px;">OpenScan Pro v1.0</p>
+        </div>
+    </div>
         </div>
     </div>
 
