@@ -5,6 +5,10 @@ let currentEditIndex = -1;
 let detectedQuad = null; 
 let isCVReady = false;
 
+// Manual "Touch to Focus" State
+let focusPoint = null;      // {x, y}
+let focusTimer = null;      // Timeout to clear focus
+
 // DOM Elements
 const video = document.getElementById('video-feed');
 const overlayCanvas = document.getElementById('overlay-canvas');
@@ -17,15 +21,14 @@ const uiLayer = document.querySelector('.ui-layer');
 // --- 1. STARTUP ---
 document.addEventListener('DOMContentLoaded', () => {
     setupButtons();
+    setupTouchFocus(); // NEW: Listen for taps
     startCamera();
     
-    // Check if OpenCV is already loaded
+    // Check if OpenCV is loaded
     if (typeof cv !== 'undefined' && cv.getBuildInformation) {
         onOpenCVReady();
     } else {
-        // Wait for OpenCV
         document.addEventListener('opencv_ready', onOpenCVReady);
-        // Backup poller (checks every 0.5s)
         let checkCV = setInterval(() => {
             if (typeof cv !== 'undefined' && cv.getBuildInformation) {
                 clearInterval(checkCV);
@@ -43,7 +46,7 @@ function onOpenCVReady() {
     requestAnimationFrame(processVideoFrame);
 }
 
-// --- 2. CAMERA SETUP ---
+// --- 2. CAMERA & CANVAS ---
 async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -57,14 +60,12 @@ async function startCamera() {
         video.srcObject = stream;
         video.onloadedmetadata = () => {
             video.play();
-            // Force canvas to match video resolution
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
         };
     } catch (e) {
         console.error(e);
         statusMsg.innerText = "Camera Error";
-        statusMsg.style.background = "rgba(255, 0, 0, 0.6)";
     }
 }
 
@@ -72,9 +73,217 @@ function resizeCanvas() {
     if (video.videoWidth > 0) {
         overlayCanvas.width = video.videoWidth;
         overlayCanvas.height = video.videoHeight;
-        video.width = video.videoWidth;   // Force attributes for OpenCV
+        video.width = video.videoWidth;
         video.height = video.videoHeight;
     }
+}
+
+// --- 3. TOUCH TO TARGET (NEW FEATURE) ---
+function setupTouchFocus() {
+    // We listen on the app-container to catch clicks anywhere
+    const app = document.getElementById('app-container');
+    
+    app.addEventListener('click', (e) => {
+        // Ignore clicks on buttons
+        if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+
+        // 1. Get click coordinates relative to video
+        const rect = video.getBoundingClientRect();
+        
+        // Calculate scale (video might be larger/smaller than screen)
+        const scaleX = video.videoWidth / rect.width;
+        const scaleY = video.videoHeight / rect.height;
+
+        const clickX = (e.clientX - rect.left) * scaleX;
+        const clickY = (e.clientY - rect.top) * scaleY;
+
+        // 2. Set the "Hint" Point
+        focusPoint = { x: clickX, y: clickY };
+        
+        // 3. Visual Feedback (Update Status)
+        statusMsg.innerText = "Targeting...";
+        statusMsg.style.background = "rgba(255, 0, 150, 0.8)"; // Pink target mode
+
+        // 4. Reset after 3 seconds if nothing found
+        if (focusTimer) clearTimeout(focusTimer);
+        focusTimer = setTimeout(() => {
+            focusPoint = null;
+            statusMsg.innerText = "Auto Scan";
+            statusMsg.style.background = "rgba(0, 150, 255, 0.6)";
+        }, 3000);
+    });
+}
+
+// --- 4. LIVE AI DETECTION ---
+function processVideoFrame() {
+    if (!isCVReady || video.paused || video.ended || video.videoWidth === 0) {
+        requestAnimationFrame(processVideoFrame);
+        return;
+    }
+
+    try {
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        const ctx = overlayCanvas.getContext('2d');
+
+        // 1. Read & Process
+        let src = new cv.Mat(height, width, cv.CV_8UC4);
+        let cap = new cv.VideoCapture(video);
+        cap.read(src);
+
+        let gray = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+        cv.Canny(gray, gray, 30, 100);
+
+        // 2. Find Contours
+        let contours = new cv.MatVector();
+        let hierarchy = new cv.Mat();
+        cv.findContours(gray, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        // 3. Analyze Shapes
+        let bestQuad = null;
+        let maxArea = 0;
+        let roughShape = null;
+
+        // If user tapped, we prioritize shapes containing that point
+        let foundFocusedShape = false; 
+
+        for (let i = 0; i < contours.size(); ++i) {
+            let cnt = contours.get(i);
+            let area = cv.contourArea(cnt);
+            let minArea = width * height * 0.05;
+
+            if (area > minArea) {
+                let peri = cv.arcLength(cnt, true);
+                let approx = new cv.Mat();
+                cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+
+                // --- FOCUS LOGIC ---
+                let isInsideFocus = false;
+                if (focusPoint) {
+                    // Check if tap is inside this shape
+                    // Returns +1 (inside), -1 (outside), 0 (edge)
+                    const result = cv.pointPolygonTest(cnt, new cv.Point(focusPoint.x, focusPoint.y), false);
+                    isInsideFocus = (result > 0);
+                }
+
+                // If we have a focus point, IGNORE anything that doesn't contain it
+                if (focusPoint && !isInsideFocus) {
+                    approx.delete();
+                    cnt.delete();
+                    continue; 
+                }
+                
+                if (focusPoint && isInsideFocus) {
+                    foundFocusedShape = true;
+                }
+                // -------------------
+
+                if (area > maxArea) {
+                    maxArea = area;
+                    if (approx.rows === 4) {
+                        if (bestQuad) bestQuad.delete();
+                        bestQuad = approx;
+                        roughShape = null;
+                    } else {
+                        if (roughShape) roughShape.delete();
+                        roughShape = approx; 
+                    }
+                } else {
+                    approx.delete();
+                }
+            }
+            cnt.delete();
+        }
+
+        // 4. Draw & Feedback
+        ctx.clearRect(0, 0, width, height);
+        ctx.lineWidth = 5;
+
+        // Draw Target Marker (If active)
+        if (focusPoint) {
+            ctx.strokeStyle = "rgba(255, 0, 150, 0.8)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(focusPoint.x, focusPoint.y, 20, 0, 2 * Math.PI); // Circle
+            ctx.moveTo(focusPoint.x - 30, focusPoint.y);
+            ctx.lineTo(focusPoint.x + 30, focusPoint.y); // Crosshair
+            ctx.moveTo(focusPoint.x, focusPoint.y - 30);
+            ctx.lineTo(focusPoint.x, focusPoint.y + 30);
+            ctx.stroke();
+        }
+
+        if (bestQuad) {
+            // BLUE: Locked
+            statusMsg.innerText = foundFocusedShape ? "Target Locked" : "Scan Ready";
+            statusMsg.style.background = "rgba(0, 200, 0, 0.6)"; 
+            
+            let points = getQuadPoints(bestQuad);
+            detectedQuad = sortPoints(points);
+            drawPoly(ctx, points, '#007AFF', 'rgba(0, 122, 255, 0.2)');
+            bestQuad.delete();
+            if (roughShape) roughShape.delete();
+
+        } else if (roughShape) {
+            // YELLOW: Rough
+            statusMsg.innerText = "Aligning...";
+            statusMsg.style.background = "rgba(255, 165, 0, 0.6)";
+            detectedQuad = null;
+
+            let points = [];
+            for (let i = 0; i < roughShape.rows; i++) {
+                points.push({ x: roughShape.data32S[i * 2], y: roughShape.data32S[i * 2 + 1] });
+            }
+            drawPoly(ctx, points, '#FFD700', 'rgba(255, 215, 0, 0.1)');
+            roughShape.delete();
+        } else {
+            // Nothing Found
+            if (focusPoint && !foundFocusedShape) {
+                statusMsg.innerText = "No Document Here";
+                statusMsg.style.background = "rgba(255, 0, 0, 0.4)";
+            } else if (!focusPoint) {
+                statusMsg.innerText = "Searching...";
+                statusMsg.style.background = "rgba(50, 50, 50, 0.6)";
+            }
+            detectedQuad = null;
+        }
+
+        // Cleanup
+        src.delete(); gray.delete(); contours.delete(); hierarchy.delete();
+
+    } catch (err) {
+        console.log(err);
+    }
+
+    requestAnimationFrame(processVideoFrame);
+}
+
+// --- HELPER FUNCTIONS ---
+function getQuadPoints(mat) {
+    let points = [];
+    for (let i = 0; i < 4; i++) {
+        points.push({ x: mat.data32S[i * 2], y: mat.data32S[i * 2 + 1] });
+    }
+    return points;
+}
+
+function drawPoly(ctx, points, stroke, fill) {
+    ctx.strokeStyle = stroke;
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fill();
+}
+
+function sortPoints(points) {
+    points.sort((a, b) => a.y - b.y);
+    let top = points.slice(0, 2).sort((a, b) => a.x - b.x);
+    let bottom = points.slice(2, 4).sort((a, b) => b.x - a.x);
+    return [top[0], top[1], bottom[0], bottom[1]];
 }
 
 function setupButtons() {
@@ -97,158 +306,14 @@ function toggleModal(modalId, show) {
     if(uiLayer) uiLayer.style.display = show ? 'none' : 'flex';
 }
 
-// --- 3. LIVE AI DETECTION LOOP ---
-function processVideoFrame() {
-    // Stop if not ready
-    if (!isCVReady || video.paused || video.ended || video.videoWidth === 0) {
-        requestAnimationFrame(processVideoFrame);
-        return;
-    }
-
-    try {
-        const width = video.videoWidth;
-        const height = video.videoHeight;
-
-        // 1. Read Frame
-        let src = new cv.Mat(height, width, cv.CV_8UC4);
-        let cap = new cv.VideoCapture(video);
-        cap.read(src);
-
-        // 2. Pre-process (Gray -> Blur -> Edge)
-        let gray = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-        cv.Canny(gray, gray, 30, 100); // Loose threshold to find paper easily
-
-        // 3. Find Contours
-        let contours = new cv.MatVector();
-        let hierarchy = new cv.Mat();
-        cv.findContours(gray, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-        // 4. Find Best Shapes
-        let maxArea = 0;
-        let bestQuad = null;   // Perfect 4-corner shape (Blue)
-        let roughShape = null; // Any big shape (Yellow)
-        
-        let minArea = width * height * 0.05; // 5% of screen
-
-        for (let i = 0; i < contours.size(); ++i) {
-            let cnt = contours.get(i);
-            let area = cv.contourArea(cnt);
-
-            if (area > minArea) {
-                let peri = cv.arcLength(cnt, true);
-                let approx = new cv.Mat();
-                cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
-
-                // Save the biggest thing we see, regardless of corners
-                if (area > maxArea) {
-                    maxArea = area;
-                    
-                    // Is it a perfect rectangle?
-                    if (approx.rows === 4) {
-                        if (bestQuad) bestQuad.delete();
-                        bestQuad = approx; // Lock on
-                        roughShape = null; // Don't need rough shape
-                    } else {
-                        // It's big but not a rectangle (maybe fingers blocking it)
-                        if (roughShape) roughShape.delete();
-                        roughShape = approx; 
-                    }
-                } else {
-                    approx.delete();
-                }
-            }
-            cnt.delete();
-        }
-
-        // 5. Draw Result
-        const ctx = overlayCanvas.getContext('2d');
-        ctx.clearRect(0, 0, width, height);
-        ctx.lineWidth = 5;
-
-        if (bestQuad) {
-            // BLUE MODE: Locked On
-            statusMsg.innerText = "Scan Ready";
-            statusMsg.style.background = "rgba(0, 200, 0, 0.6)"; // Green/Blue
-            
-            let points = [];
-            for (let i = 0; i < 4; i++) {
-                points.push({ x: bestQuad.data32S[i * 2], y: bestQuad.data32S[i * 2 + 1] });
-            }
-            detectedQuad = sortPoints(points);
-
-            // Draw Blue Box
-            drawPoly(ctx, points, '#007AFF', 'rgba(0, 122, 255, 0.2)');
-            bestQuad.delete();
-            if (roughShape) roughShape.delete();
-
-        } else if (roughShape) {
-            // YELLOW MODE: I see paper, but can't find corners
-            statusMsg.innerText = "Aligning...";
-            statusMsg.style.background = "rgba(255, 165, 0, 0.6)"; // Orange
-            detectedQuad = null;
-
-            // Extract points from the rough shape to draw it
-            let points = [];
-            for (let i = 0; i < roughShape.rows; i++) {
-                points.push({ x: roughShape.data32S[i * 2], y: roughShape.data32S[i * 2 + 1] });
-            }
-            
-            // Draw Yellow Outline
-            drawPoly(ctx, points, '#FFD700', 'rgba(255, 215, 0, 0.1)');
-            roughShape.delete();
-
-        } else {
-            // NOTHING FOUND
-            statusMsg.innerText = "Searching...";
-            statusMsg.style.background = "rgba(50, 50, 50, 0.6)";
-            detectedQuad = null;
-        }
-
-        // Cleanup
-        src.delete(); gray.delete(); contours.delete(); hierarchy.delete();
-
-    } catch (err) {
-        console.log(err);
-    }
-
-    requestAnimationFrame(processVideoFrame);
-}
-
-// Helper to draw shapes
-function drawPoly(ctx, points, strokeColor, fillColor) {
-    ctx.strokeStyle = strokeColor;
-    ctx.fillStyle = fillColor;
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-    }
-    ctx.closePath();
-    ctx.stroke();
-    ctx.fill();
-}
-
-function sortPoints(points) {
-    // Sort TL, TR, BR, BL
-    points.sort((a, b) => a.y - b.y);
-    let top = points.slice(0, 2).sort((a, b) => a.x - b.x);
-    let bottom = points.slice(2, 4).sort((a, b) => b.x - a.x);
-    return [top[0], top[1], bottom[0], bottom[1]];
-}
-
-// --- 4. CAPTURE & CROP ---
 function captureImage() {
     video.style.opacity = "0.2";
     setTimeout(() => video.style.opacity = "1", 150);
-
     const hidden = document.getElementById('hidden-canvas');
     hidden.width = video.videoWidth;
     hidden.height = video.videoHeight;
     const ctx = hidden.getContext('2d');
     ctx.drawImage(video, 0, 0);
-    
     currentRawImg = hidden.toDataURL('image/jpeg', 0.9);
     prepareCropModal(currentRawImg, detectedQuad);
 }
@@ -262,16 +327,13 @@ function prepareCropModal(imgSrc, autoPoints) {
         const maxW = window.innerWidth * 0.9;
         const maxH = window.innerHeight * 0.8;
         const scale = Math.min(maxW / previewImgObj.width, maxH / previewImgObj.height);
-        
         const finalW = Math.floor(previewImgObj.width * scale);
         const finalH = Math.floor(previewImgObj.height * scale);
-        
         container.style.width = finalW + "px";
         container.style.height = finalH + "px";
         c.width = finalW;
         c.height = finalH;
         container.dataset.scale = scale;
-
         toggleModal('crop-modal', true);
         setupHandles(finalW, finalH, autoPoints, scale);
         drawCropLines();
@@ -283,9 +345,7 @@ function setupHandles(w, h, autoPoints, scale) {
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
     let positions;
-
     if (autoPoints) {
-        // Use AI points
         positions = [
             { x: autoPoints[0].x * scale, y: autoPoints[0].y * scale },
             { x: autoPoints[1].x * scale, y: autoPoints[1].y * scale },
@@ -293,13 +353,11 @@ function setupHandles(w, h, autoPoints, scale) {
             { x: autoPoints[3].x * scale, y: autoPoints[3].y * scale }
         ];
     } else {
-        // Default Corners
         positions = [
             { x: w * 0.2, y: h * 0.2 }, { x: w * 0.8, y: h * 0.2 },
             { x: w * 0.8, y: h * 0.8 }, { x: w * 0.2, y: h * 0.8 }
         ];
     }
-
     handles.forEach((handle, i) => {
         handle.style.left = (positions[i].x - 15) + 'px';
         handle.style.top = (positions[i].y - 15) + 'px';
@@ -311,28 +369,22 @@ function setupHandles(w, h, autoPoints, scale) {
 function startDrag(e, handle, container, isTouch) {
     e.preventDefault();
     const rect = container.getBoundingClientRect();
-
     function move(event) {
         event.preventDefault();
         const clientX = isTouch ? event.touches[0].clientX : event.clientX;
         const clientY = isTouch ? event.touches[0].clientY : event.clientY;
-
         let x = clientX - rect.left;
         let y = clientY - rect.top;
-
         x = Math.max(0, Math.min(x, container.offsetWidth));
         y = Math.max(0, Math.min(y, container.offsetHeight));
-
         handle.style.left = (x - 15) + 'px';
         handle.style.top = (y - 15) + 'px';
         requestAnimationFrame(drawCropLines);
     }
-
     function stop() {
         if (isTouch) { document.ontouchmove = null; document.ontouchend = null; }
         else { document.onmousemove = null; document.onmouseup = null; }
     }
-
     if (isTouch) { document.ontouchmove = move; document.ontouchend = stop; }
     else { document.onmousemove = move; document.onmouseup = stop; }
 }
@@ -341,15 +393,12 @@ function drawCropLines() {
     const c = document.getElementById('crop-canvas');
     const ctx = c.getContext('2d');
     const handles = document.querySelectorAll('.crop-handle');
-
     ctx.clearRect(0, 0, c.width, c.height);
     ctx.drawImage(previewImgObj, 0, 0, c.width, c.height);
-
     const p = Array.from(handles).map(h => ({
         x: parseFloat(h.style.left) + 15,
         y: parseFloat(h.style.top) + 15
     }));
-
     ctx.strokeStyle = '#007AFF';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -359,7 +408,6 @@ function drawCropLines() {
     ctx.lineTo(p[3].x, p[3].y);
     ctx.closePath();
     ctx.stroke();
-
     ctx.fillStyle = 'white';
     p.forEach(point => {
         ctx.beginPath();
@@ -373,26 +421,21 @@ function finishCrop() {
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
     const scale = parseFloat(container.dataset.scale);
-
     let p = Array.from(handles).map(h => ({
         x: (parseFloat(h.style.left) + 15) / scale,
         y: (parseFloat(h.style.top) + 15) / scale
     }));
-
-    // Bounding box crop
     let minX = Math.min(p[0].x, p[3].x);
     let minY = Math.min(p[0].y, p[1].y);
     let maxX = Math.max(p[1].x, p[2].x);
     let maxY = Math.max(p[2].y, p[3].y);
     let w = maxX - minX;
     let h = maxY - minY;
-
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d');
     const img = new Image();
-    
     img.onload = () => {
         ctx.drawImage(img, minX, minY, w, h, 0, 0, w, h);
         saveScan(canvas.toDataURL('image/jpeg', 0.9));
@@ -415,7 +458,6 @@ function saveScan(imgData) {
     }, 700);
 }
 
-// --- 5. EDITOR & EXPORT ---
 function openGallery() {
     if (scannedDocs.length === 0) return;
     const grid = document.getElementById('gallery-grid');
@@ -438,7 +480,6 @@ function openEditor(index) {
     toggleModal('editor-modal', true);
 }
 
-// Make globally accessible
 window.applyFilter = function(type) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
