@@ -85,26 +85,21 @@ function setupTouchFocus() {
     app.addEventListener('click', (e) => {
         if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
 
-        // 1. Math for Click Position
         const rect = video.getBoundingClientRect();
         const scaleX = video.videoWidth / rect.width;
         const scaleY = video.videoHeight / rect.height;
         const clickX = (e.clientX - rect.left) * scaleX;
         const clickY = (e.clientY - rect.top) * scaleY;
 
-        // 2. Set Logic Point
         focusPoint = { x: clickX, y: clickY };
         
-        // 3. Move Visual Ring
         focusRing.style.display = 'block';
         focusRing.style.left = e.clientX + 'px';
         focusRing.style.top = e.clientY + 'px';
         
-        // 4. Update Status
         statusMsg.innerText = "Targeting...";
         statusMsg.style.background = "rgba(255, 0, 85, 0.8)"; 
 
-        // 5. Reset after 4 seconds
         if (focusTimer) clearTimeout(focusTimer);
         focusTimer = setTimeout(() => {
             focusPoint = null;
@@ -115,7 +110,7 @@ function setupTouchFocus() {
     });
 }
 
-// --- 4. THE BLOB DETECTION LOOP (ROBUST) ---
+// --- 4. THE BLOB DETECTION LOOP ---
 function processVideoFrame() {
     if (!isCVReady || video.paused || video.ended || video.videoWidth === 0) {
         requestAnimationFrame(processVideoFrame);
@@ -127,42 +122,33 @@ function processVideoFrame() {
         const height = video.videoHeight;
         const ctx = overlayCanvas.getContext('2d');
 
-        // 1. Read Frame (Downscale slightly for speed if needed, but 1080p is usually fine on modern phones)
         let src = new cv.Mat(height, width, cv.CV_8UC4);
         let cap = new cv.VideoCapture(video);
         cap.read(src);
 
-        // 2. Heavy Pre-processing (The "Blob" Trick)
         let gray = new cv.Mat();
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        
-        // Blur heavily to remove text details and just see the "page shape"
         cv.GaussianBlur(gray, gray, new cv.Size(11, 11), 0);
         
-        // Canny Edge Detection
         let edges = new cv.Mat();
         cv.Canny(gray, edges, 75, 200);
 
-        // Dilate (Thicken) edges to close gaps caused by fingers/glare
         let kernel = cv.Mat.ones(5, 5, cv.CV_8U);
         cv.dilate(edges, edges, kernel);
 
-        // 3. Find Contours
         let contours = new cv.MatVector();
         let hierarchy = new cv.Mat();
         cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-        // 4. Find the Best Blob
         let bestContour = null;
         let maxArea = 0;
-        let minArea = width * height * 0.10; // Must be 10% of screen
+        let minArea = width * height * 0.10; 
 
         for (let i = 0; i < contours.size(); ++i) {
             let cnt = contours.get(i);
             let area = cv.contourArea(cnt);
 
             if (area > minArea) {
-                // Focus Check
                 if (focusPoint) {
                     const result = cv.pointPolygonTest(cnt, new cv.Point(focusPoint.x, focusPoint.y), false);
                     if (result < 0) { cnt.delete(); continue; }
@@ -171,7 +157,7 @@ function processVideoFrame() {
                 if (area > maxArea) {
                     maxArea = area;
                     if (bestContour) bestContour.delete();
-                    bestContour = cnt; // Save the raw contour, don't approximate yet
+                    bestContour = cnt; 
                 } else {
                     cnt.delete();
                 }
@@ -180,46 +166,33 @@ function processVideoFrame() {
             }
         }
 
-        // 5. Extract Corners from the Blob
         ctx.clearRect(0, 0, width, height);
         ctx.lineWidth = 5;
 
         if (bestContour) {
-            // Calculate Convex Hull to smooth out fingers
             let hull = new cv.Mat();
             cv.convexHull(bestContour, hull, false, true);
             
-            // Approximate polygon from hull
             let approx = new cv.Mat();
             let peri = cv.arcLength(hull, true);
             cv.approxPolyDP(hull, approx, 0.02 * peri, true);
 
-            // INTELLIGENT CORNER FINDER
-            // Even if approx has 5, 6, or 10 points, we find the 4 "Extreme" corners
-            // This prevents the "flickering" when detection isn't perfect
             let points = [];
-            
-            // Convert Mat to JS Array
             for (let i = 0; i < approx.rows; i++) {
                 points.push({ x: approx.data32S[i * 2], y: approx.data32S[i * 2 + 1] });
             }
 
-            // Force 4 corners using coordinate math
-            // TL: Min(x+y), BR: Max(x+y), TR: Max(x-y), BL: Min(x-y)
-            // This is robust against rotation
             if (points.length >= 4) {
                 let tl = points.reduce((prev, curr) => (curr.x + curr.y) < (prev.x + prev.y) ? curr : prev);
                 let br = points.reduce((prev, curr) => (curr.x + curr.y) > (prev.x + prev.y) ? curr : prev);
                 let tr = points.reduce((prev, curr) => (curr.x - curr.y) > (prev.x - prev.y) ? curr : prev);
                 let bl = points.reduce((prev, curr) => (curr.x - curr.y) < (prev.x - prev.y) ? curr : prev);
                 
-                detectedQuad = [tl, tr, br, bl]; // Order matters for drawing
+                detectedQuad = [tl, tr, br, bl]; 
             } else {
-                // Fallback for simple shapes (rect)
                 detectedQuad = sortPoints(points);
             }
 
-            // Draw Stability
             statusMsg.innerText = "Scan Ready";
             statusMsg.style.background = "rgba(0, 200, 0, 0.6)"; 
 
@@ -234,7 +207,6 @@ function processVideoFrame() {
             }
         }
 
-        // Cleanup
         src.delete(); gray.delete(); edges.delete(); contours.delete(); hierarchy.delete(); kernel.delete();
 
     } catch (err) {
@@ -256,7 +228,6 @@ function drawPoly(ctx, points, stroke, fill) {
     ctx.stroke();
     ctx.fill();
     
-    // Draw Corner Dots
     ctx.fillStyle = 'white';
     points.forEach(p => {
         ctx.beginPath();
@@ -266,7 +237,6 @@ function drawPoly(ctx, points, stroke, fill) {
 }
 
 function sortPoints(points) {
-    // Basic sorting if we have exactly 4 points from approx
     if (points.length !== 4) return points;
     points.sort((a, b) => a.y - b.y);
     let top = points.slice(0, 2).sort((a, b) => a.x - b.x);
@@ -404,31 +374,59 @@ function drawCropLines() {
     });
 }
 
+// --- 5. THE CRITICAL FIX: PERSPECTIVE WARP ---
 function finishCrop() {
     toggleModal('crop-modal', false);
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
     const scale = parseFloat(container.dataset.scale);
+
+    // 1. Get exact corner coordinates (SCALED UP to Original Image Size)
     let p = Array.from(handles).map(h => ({
         x: (parseFloat(h.style.left) + 15) / scale,
         y: (parseFloat(h.style.top) + 15) / scale
     }));
-    let minX = Math.min(p[0].x, p[3].x);
-    let minY = Math.min(p[0].y, p[1].y);
-    let maxX = Math.max(p[1].x, p[2].x);
-    let maxY = Math.max(p[2].y, p[3].y);
-    let w = maxX - minX;
-    let h = maxY - minY;
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    img.onload = () => {
-        ctx.drawImage(img, minX, minY, w, h, 0, 0, w, h);
-        saveScan(canvas.toDataURL('image/jpeg', 0.9));
-    };
-    img.src = currentRawImg;
+
+    // 2. Load Original Image into OpenCV
+    let src = cv.imread(previewImgObj);
+    
+    // 3. Define the 4 Corners from UI
+    let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        p[0].x, p[0].y, // TL
+        p[1].x, p[1].y, // TR
+        p[2].x, p[2].y, // BR
+        p[3].x, p[3].y  // BL
+    ]);
+
+    // 4. Define the 4 Destination Corners (Flat Rectangle)
+    // We calculate width/height based on the distances between corners to keep aspect ratio
+    let widthTop = Math.hypot(p[1].x - p[0].x, p[1].y - p[0].y);
+    let widthBottom = Math.hypot(p[2].x - p[3].x, p[2].y - p[3].y);
+    let heightLeft = Math.hypot(p[3].x - p[0].x, p[3].y - p[0].y);
+    let heightRight = Math.hypot(p[2].x - p[1].x, p[2].y - p[1].y);
+
+    let maxWidth = Math.max(widthTop, widthBottom);
+    let maxHeight = Math.max(heightLeft, heightRight);
+
+    let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        0, 0,               // TL
+        maxWidth, 0,        // TR
+        maxWidth, maxHeight,// BR
+        0, maxHeight        // BL
+    ]);
+
+    // 5. Compute Perspective Matrix & Warp
+    let M = cv.getPerspectiveTransform(srcTri, dstTri);
+    let dst = new cv.Mat();
+    cv.warpPerspective(src, dst, M, new cv.Size(maxWidth, maxHeight), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+    // 6. Convert Result back to Canvas/Image
+    let canvas = document.createElement('canvas');
+    cv.imshow(canvas, dst);
+    saveScan(canvas.toDataURL('image/jpeg', 0.9));
+
+    // Cleanup
+    src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
 }
 
 function saveScan(imgData) {
