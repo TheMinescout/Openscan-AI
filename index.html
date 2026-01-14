@@ -70,16 +70,36 @@
             <div id="gallery-grid" class="gallery-grid"></div>
         </div>
 
-        <div id="editor-modal" class="modal" style="background: #000;">
-            <div class="modal-header">
-                <button id="close-editor">Close</button>
-                <span class="modal-title">Edit Page</span>
-                <button id="delete-page-btn" style="color: var(--danger);">Delete</button>
-            </div>
-            <div class="editor-view">
-                <img id="editor-img" src="">
-            </div>
-        </div>
+       <div id="editor-modal" class="modal" style="background: #111;">
+    <div class="modal-header">
+        <button id="close-editor">Done</button>
+        <span class="modal-title">Edit Page</span>
+        <div style="width: 30px;"></div>
+    </div>
+    
+    <div class="editor-view">
+        <img id="editor-img" src="">
+    </div>
+
+    <div class="editor-toolbar">
+        <button class="edit-btn" onclick="applyFilter('original')">
+            <span>🎨</span>
+            <label>Original</label>
+        </button>
+        <button class="edit-btn" onclick="applyFilter('bw')">
+            <span>📄</span>
+            <label>B&W</label>
+        </button>
+        <button class="edit-btn" onclick="rotateImage()">
+            <span>🔄</span>
+            <label>Rotate</label>
+        </button>
+        <button class="edit-btn destuctive" id="delete-page-btn">
+            <span>🗑️</span>
+            <label>Delete</label>
+        </button>
+    </div>
+</div>
 
         <div id="settings-modal" class="modal">
             <div class="modal-header">
