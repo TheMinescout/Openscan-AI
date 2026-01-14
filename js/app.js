@@ -1,6 +1,6 @@
 // --- STATE MANAGEMENT ---
 let scannedDocs = [];
-let currentRawImg = null;
+let currentRawImg = null; // The full resolution original
 let currentEditIndex = -1;
 
 // DOM Elements
@@ -11,18 +11,20 @@ const scanCount = document.getElementById('scan-count');
 const lastScanImg = document.getElementById('last-scan-img');
 
 // --- 1. STARTUP LOGIC ---
-window.onload = function() {
-    // A. Start Camera immediately
-    startCamera();
-
-    // B. Activate Buttons immediately (Fixes "Settings won't open")
+// We use 'DOMContentLoaded' to wire up buttons instantly, before images load.
+document.addEventListener('DOMContentLoaded', () => {
     setupButtons();
-};
+    startCamera();
+});
 
 async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+            video: { 
+                facingMode: "environment", 
+                width: { ideal: 1920 }, 
+                height: { ideal: 1080 } 
+            },
             audio: false
         });
         video.srcObject = stream;
@@ -33,7 +35,7 @@ async function startCamera() {
         };
     } catch (e) {
         console.error("Camera Error:", e);
-        statusMsg.innerText = "Camera Denied";
+        statusMsg.innerText = "Check Camera Permissions";
         statusMsg.style.background = "rgba(255, 0, 0, 0.4)";
     }
 }
@@ -53,26 +55,21 @@ function setupButtons() {
     document.getElementById('close-editor').onclick = () => toggleModal('editor-modal', false);
     document.getElementById('delete-page-btn').onclick = deleteCurrentPage;
 
-    // Settings (Fixing the specific issue you mentioned)
-    document.getElementById('settings-btn').onclick = () => {
-        toggleModal('settings-modal', true);
-    };
+    // Settings
+    document.getElementById('settings-btn').onclick = () => toggleModal('settings-modal', true);
     document.getElementById('close-settings').onclick = () => toggleModal('settings-modal', false);
 }
 
-// --- 2. MODAL HELPER ---
 function toggleModal(modalId, show) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.style.display = show ? 'flex' : 'none';
-    } else {
-        console.error(`Modal #${modalId} not found in HTML!`);
     }
 }
 
-// --- 3. CAPTURE & SMART CROP ---
+// --- 2. CAPTURE & SMART CROP ---
 function captureImage() {
-    // Flash Effect
+    // Visual flash
     video.style.opacity = "0.5";
     setTimeout(() => video.style.opacity = "1", 100);
 
@@ -80,72 +77,72 @@ function captureImage() {
     hidden.width = video.videoWidth;
     hidden.height = video.videoHeight;
     const ctx = hidden.getContext('2d');
+    
+    // Draw full video frame to hidden canvas
     ctx.drawImage(video, 0, 0);
     
-    currentRawImg = hidden.toDataURL('image/jpeg', 0.85);
+    // Save the FULL RES image for cropping later
+    currentRawImg = hidden.toDataURL('image/jpeg', 0.9);
+    
     prepareCropModal(currentRawImg);
 }
 
 function prepareCropModal(imgSrc) {
     const modal = document.getElementById('crop-modal');
-    const container = document.getElementById('crop-ui-container'); // We resize this div!
+    const container = document.getElementById('crop-ui-container');
     const c = document.getElementById('crop-canvas');
     const ctx = c.getContext('2d');
     const img = new Image();
 
     img.onload = () => {
-        // 1. Calculate Available Screen Space (leaving room for header)
+        // Fit canvas to screen
         const maxW = window.innerWidth * 0.95;
-        const maxH = (window.innerHeight - 80) * 0.95; // Subtract 80px for header buttons
-
-        // 2. Calculate "Contain" Ratio (Fits BOTH width and height)
+        const maxH = (window.innerHeight - 80) * 0.95;
         const scale = Math.min(maxW / img.width, maxH / img.height);
         
         const finalW = img.width * scale;
         const finalH = img.height * scale;
         
-        // 3. Set Canvas Size
         c.width = finalW;
         c.height = finalH;
         ctx.drawImage(img, 0, 0, finalW, finalH);
         
-        // 4. CRITICAL FIX: Resize the Container to match the Canvas exactly.
-        // This forces the "0,0" coordinate of the container to match the image.
+        // Resize container to match image exactly
         container.style.width = finalW + "px";
         container.style.height = finalH + "px";
+        
+        // Store the scale factor so we can crop the original later
+        container.dataset.scale = scale;
 
         toggleModal('crop-modal', true);
-        
-        // 5. Place Handles
         setupHandles(finalW, finalH);
     };
     img.src = imgSrc;
 }
 
-// --- 4. DRAGGABLE HANDLES (FIXED) ---
+// --- 3. DRAGGABLE HANDLES ---
 function setupHandles(w, h) {
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
-    
-    // Default Positions (Corners with padding)
     const padding = 20;
+    
+    // Initial Corner Positions
     const positions = [
-        {x: padding, y: padding},         // Top-Left
-        {x: w - padding, y: padding},     // Top-Right
-        {x: w - padding, y: h - padding}, // Bottom-Right
-        {x: padding, y: h - padding}      // Bottom-Left
+        {x: padding, y: padding},
+        {x: w - padding, y: padding},
+        {x: w - padding, y: h - padding},
+        {x: padding, y: h - padding}
     ];
 
     handles.forEach((handle, i) => {
-        // Position handle
         handle.style.left = positions[i].x + 'px';
         handle.style.top = positions[i].y + 'px';
-
-        // Clear old listeners to prevent stacking
+        
+        // Clear old listeners
         handle.onmousedown = null;
         handle.ontouchstart = null;
 
-        // Attach new listeners
+        // Add new listeners
         handle.onmousedown = (e) => startDrag(e, handle, container, false);
         handle.ontouchstart = (e) => startDrag(e, handle, container, true);
     });
@@ -153,20 +150,20 @@ function setupHandles(w, h) {
 
 function startDrag(e, handle, container, isTouch) {
     e.preventDefault(); 
-    
-    // 1. Get container offset ONCE at start
     const rect = container.getBoundingClientRect();
 
     function move(event) {
-        // Get pointer coordinates
+        event.preventDefault();
         const clientX = isTouch ? event.touches[0].clientX : event.clientX;
         const clientY = isTouch ? event.touches[0].clientY : event.clientY;
 
-        // 2. Calculate local position relative to container
         let x = clientX - rect.left;
         let y = clientY - rect.top;
 
-        // 3. Update handle
+        // Boundary Checks (Keep inside image)
+        x = Math.max(0, Math.min(x, container.offsetWidth));
+        y = Math.max(0, Math.min(y, container.offsetHeight));
+
         handle.style.left = x + 'px';
         handle.style.top = y + 'px';
     }
@@ -181,7 +178,6 @@ function startDrag(e, handle, container, isTouch) {
         }
     }
 
-    // Attach to document to prevent "losing" the handle if moving fast
     if (isTouch) {
         document.ontouchmove = move;
         document.ontouchend = stop;
@@ -191,10 +187,45 @@ function startDrag(e, handle, container, isTouch) {
     }
 }
 
-// --- 5. FINISH & ANIMATE ---
+// --- 4. THE ACTUAL "CROP" LOGIC ---
 function finishCrop() {
     toggleModal('crop-modal', false);
-    saveScan(currentRawImg);
+
+    // 1. Get handle positions from UI
+    const handles = document.querySelectorAll('.crop-handle');
+    const container = document.getElementById('crop-ui-container');
+    const scale = parseFloat(container.dataset.scale); // Get the scale factor used for preview
+
+    // Get UI coordinates
+    let x1 = parseFloat(handles[0].style.left);
+    let y1 = parseFloat(handles[0].style.top);
+    let x3 = parseFloat(handles[2].style.left); // Bottom-Right handle
+    let y3 = parseFloat(handles[2].style.top);
+
+    // 2. Scale coordinates back up to ORIGINAL image size
+    // Note: This is a simple bounding box crop. 
+    // For true perspective warp, we would need the OpenCV logic here.
+    let realX = x1 / scale;
+    let realY = y1 / scale;
+    let realW = (x3 - x1) / scale;
+    let realH = (y3 - y1) / scale;
+
+    // 3. Crop using a temporary canvas
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = realW;
+    tempCanvas.height = realH;
+    const ctx = tempCanvas.getContext('2d');
+
+    const originalImg = new Image();
+    originalImg.onload = () => {
+        // Draw only the sliced portion
+        ctx.drawImage(originalImg, realX, realY, realW, realH, 0, 0, realW, realH);
+        
+        // Save result
+        const finalCroppedData = tempCanvas.toDataURL('image/jpeg', 0.9);
+        saveScan(finalCroppedData);
+    };
+    originalImg.src = currentRawImg;
 }
 
 function saveScan(imgData) {
@@ -203,7 +234,7 @@ function saveScan(imgData) {
     // Animation
     freezeLayer.style.backgroundImage = `url(${imgData})`;
     freezeLayer.style.display = 'block';
-    void freezeLayer.offsetWidth; // Force Reflow
+    void freezeLayer.offsetWidth; 
     freezeLayer.classList.add('fly-to-corner');
 
     setTimeout(() => {
@@ -216,20 +247,17 @@ function saveScan(imgData) {
     }, 700);
 }
 
-// --- 6. GALLERY & EDITOR ---
+// --- 5. GALLERY & EDITOR ---
 function openGallery() {
     if (scannedDocs.length === 0) return;
-    
     const grid = document.getElementById('gallery-grid');
     grid.innerHTML = '';
-    
     scannedDocs.forEach((doc, index) => {
         const img = document.createElement('img');
         img.src = doc;
         img.onclick = () => openEditor(index);
         grid.appendChild(img);
     });
-
     toggleModal('gallery-modal', true);
 }
 
@@ -246,7 +274,6 @@ function deleteCurrentPage() {
     if (confirm("Delete this page?")) {
         scannedDocs.splice(currentEditIndex, 1);
         toggleModal('editor-modal', false);
-        
         if (scannedDocs.length > 0) {
             openGallery(); 
             lastScanImg.src = scannedDocs[scannedDocs.length - 1];
