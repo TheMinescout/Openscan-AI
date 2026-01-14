@@ -1,4 +1,3 @@
-// --- STATE MANAGEMENT ---
 let scannedDocs = [];
 let currentRawImg = null;
 let currentEditIndex = -1;
@@ -17,14 +16,14 @@ const statusMsg = document.getElementById('status-msg');
 const scanCount = document.getElementById('scan-count');
 const lastScanImg = document.getElementById('last-scan-img');
 const uiLayer = document.querySelector('.ui-layer');
+const focusRing = document.getElementById('focus-ring'); // NEW
 
 // --- 1. STARTUP ---
 document.addEventListener('DOMContentLoaded', () => {
     setupButtons();
-    setupTouchFocus(); // NEW: Listen for taps
+    setupTouchFocus(); 
     startCamera();
     
-    // Check if OpenCV is loaded
     if (typeof cv !== 'undefined' && cv.getBuildInformation) {
         onOpenCVReady();
     } else {
@@ -78,43 +77,46 @@ function resizeCanvas() {
     }
 }
 
-// --- 3. TOUCH TO TARGET (NEW FEATURE) ---
+// --- 3. TOUCH TO TARGET (IMPROVED) ---
 function setupTouchFocus() {
-    // We listen on the app-container to catch clicks anywhere
     const app = document.getElementById('app-container');
     
     app.addEventListener('click', (e) => {
-        // Ignore clicks on buttons
         if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
 
-        // 1. Get click coordinates relative to video
+        // 1. Math for Click Position
         const rect = video.getBoundingClientRect();
-        
-        // Calculate scale (video might be larger/smaller than screen)
+        // Handle "object-fit: cover" offset if necessary, but this is usually close enough
         const scaleX = video.videoWidth / rect.width;
         const scaleY = video.videoHeight / rect.height;
 
         const clickX = (e.clientX - rect.left) * scaleX;
         const clickY = (e.clientY - rect.top) * scaleY;
 
-        // 2. Set the "Hint" Point
+        // 2. Set Logic Point
         focusPoint = { x: clickX, y: clickY };
         
-        // 3. Visual Feedback (Update Status)
+        // 3. Move Visual Ring (CSS)
+        focusRing.style.display = 'block';
+        focusRing.style.left = e.clientX + 'px';
+        focusRing.style.top = e.clientY + 'px';
+        
+        // 4. Update Status
         statusMsg.innerText = "Targeting...";
-        statusMsg.style.background = "rgba(255, 0, 150, 0.8)"; // Pink target mode
+        statusMsg.style.background = "rgba(255, 0, 85, 0.8)"; 
 
-        // 4. Reset after 3 seconds if nothing found
+        // 5. Reset after 4 seconds
         if (focusTimer) clearTimeout(focusTimer);
         focusTimer = setTimeout(() => {
             focusPoint = null;
+            focusRing.style.display = 'none'; // Hide ring
             statusMsg.innerText = "Auto Scan";
             statusMsg.style.background = "rgba(0, 150, 255, 0.6)";
-        }, 3000);
+        }, 4000);
     });
 }
 
-// --- 4. LIVE AI DETECTION ---
+// --- 4. THE SMART AI LOOP ---
 function processVideoFrame() {
     if (!isCVReady || video.paused || video.ended || video.videoWidth === 0) {
         requestAnimationFrame(processVideoFrame);
@@ -126,97 +128,73 @@ function processVideoFrame() {
         const height = video.videoHeight;
         const ctx = overlayCanvas.getContext('2d');
 
-        // 1. Read & Process
         let src = new cv.Mat(height, width, cv.CV_8UC4);
         let cap = new cv.VideoCapture(video);
         cap.read(src);
 
+        // Pre-process (Lower threshold for better detection in low light)
         let gray = new cv.Mat();
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
         cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-        cv.Canny(gray, gray, 30, 100);
+        cv.Canny(gray, gray, 30, 120); // Sensitive edge detection
 
-        // 2. Find Contours
         let contours = new cv.MatVector();
         let hierarchy = new cv.Mat();
         cv.findContours(gray, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-        // 3. Analyze Shapes
         let bestQuad = null;
         let maxArea = 0;
         let roughShape = null;
 
-        // If user tapped, we prioritize shapes containing that point
-        let foundFocusedShape = false; 
-
         for (let i = 0; i < contours.size(); ++i) {
             let cnt = contours.get(i);
             let area = cv.contourArea(cnt);
-            let minArea = width * height * 0.05;
+            let minArea = width * height * 0.05; // 5% of screen
 
             if (area > minArea) {
-                let peri = cv.arcLength(cnt, true);
-                let approx = new cv.Mat();
-                cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
-
-                // --- FOCUS LOGIC ---
-                let isInsideFocus = false;
+                // FOCUS LOGIC: If user tapped, only look at shapes containing that point
                 if (focusPoint) {
-                    // Check if tap is inside this shape
-                    // Returns +1 (inside), -1 (outside), 0 (edge)
                     const result = cv.pointPolygonTest(cnt, new cv.Point(focusPoint.x, focusPoint.y), false);
-                    isInsideFocus = (result > 0);
-                }
-
-                // If we have a focus point, IGNORE anything that doesn't contain it
-                if (focusPoint && !isInsideFocus) {
-                    approx.delete();
-                    cnt.delete();
-                    continue; 
-                }
-                
-                if (focusPoint && isInsideFocus) {
-                    foundFocusedShape = true;
-                }
-                // -------------------
-
-                if (area > maxArea) {
-                    maxArea = area;
-                    if (approx.rows === 4) {
-                        if (bestQuad) bestQuad.delete();
-                        bestQuad = approx;
-                        roughShape = null;
-                    } else {
-                        if (roughShape) roughShape.delete();
-                        roughShape = approx; 
+                    if (result < 0) { // -1 means outside
+                        cnt.delete();
+                        continue; 
                     }
+                }
+
+                // "Rubber Band" Logic (Convex Hull)
+                // This fixes the "fingers blocking edges" problem
+                let hull = new cv.Mat();
+                cv.convexHull(cnt, hull, false, true);
+                
+                // Approximate the Hull to a polygon
+                let approx = new cv.Mat();
+                let peri = cv.arcLength(hull, true);
+                cv.approxPolyDP(hull, approx, 0.04 * peri, true); // 0.04 is looser than 0.02
+
+                // If it has 4 corners, it's a quad. If not, it's a rough shape.
+                if (approx.rows === 4 && area > maxArea) {
+                    if (bestQuad) bestQuad.delete();
+                    bestQuad = approx;
+                    maxArea = area;
+                } else if (!bestQuad && area > maxArea) {
+                    // Fallback: If we can't find a perfect quad, keep the biggest hull
+                    if (roughShape) roughShape.delete();
+                    roughShape = approx;
                 } else {
                     approx.delete();
                 }
+                hull.delete();
             }
             cnt.delete();
         }
 
-        // 4. Draw & Feedback
+        // --- DRAWING ---
         ctx.clearRect(0, 0, width, height);
         ctx.lineWidth = 5;
 
-        // Draw Target Marker (If active)
-        if (focusPoint) {
-            ctx.strokeStyle = "rgba(255, 0, 150, 0.8)";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(focusPoint.x, focusPoint.y, 20, 0, 2 * Math.PI); // Circle
-            ctx.moveTo(focusPoint.x - 30, focusPoint.y);
-            ctx.lineTo(focusPoint.x + 30, focusPoint.y); // Crosshair
-            ctx.moveTo(focusPoint.x, focusPoint.y - 30);
-            ctx.lineTo(focusPoint.x, focusPoint.y + 30);
-            ctx.stroke();
-        }
-
+        // If we found a Lock (Blue)
         if (bestQuad) {
-            // BLUE: Locked
-            statusMsg.innerText = foundFocusedShape ? "Target Locked" : "Scan Ready";
+            statusMsg.innerText = focusPoint ? "Target Locked" : "Scan Ready";
             statusMsg.style.background = "rgba(0, 200, 0, 0.6)"; 
             
             let points = getQuadPoints(bestQuad);
@@ -225,31 +203,40 @@ function processVideoFrame() {
             bestQuad.delete();
             if (roughShape) roughShape.delete();
 
-        } else if (roughShape) {
-            // YELLOW: Rough
-            statusMsg.innerText = "Aligning...";
-            statusMsg.style.background = "rgba(255, 165, 0, 0.6)";
-            detectedQuad = null;
-
-            let points = [];
-            for (let i = 0; i < roughShape.rows; i++) {
-                points.push({ x: roughShape.data32S[i * 2], y: roughShape.data32S[i * 2 + 1] });
+        } 
+        // If we found a Rough Shape (Yellow) - Often happens with fingers
+        else if (roughShape) {
+            // Even if it's rough, we use it if the user Tapped!
+            if (focusPoint) {
+                statusMsg.innerText = "Target Found";
+                statusMsg.style.background = "rgba(255, 165, 0, 0.8)";
+                
+                // Convert rough shape to bounding box for cropping
+                let rect = cv.boundingRect(roughShape);
+                detectedQuad = [
+                    {x: rect.x, y: rect.y},
+                    {x: rect.x + rect.width, y: rect.y},
+                    {x: rect.x + rect.width, y: rect.y + rect.height},
+                    {x: rect.x, y: rect.y + rect.height}
+                ];
+                
+                // Draw Yellow Box
+                drawPoly(ctx, detectedQuad, '#FFD700', 'rgba(255, 215, 0, 0.1)');
+            } else {
+                statusMsg.innerText = "Aligning...";
+                statusMsg.style.background = "rgba(255, 165, 0, 0.6)";
+                detectedQuad = null;
             }
-            drawPoly(ctx, points, '#FFD700', 'rgba(255, 215, 0, 0.1)');
             roughShape.delete();
-        } else {
-            // Nothing Found
-            if (focusPoint && !foundFocusedShape) {
-                statusMsg.innerText = "No Document Here";
-                statusMsg.style.background = "rgba(255, 0, 0, 0.4)";
-            } else if (!focusPoint) {
+        } 
+        else {
+            detectedQuad = null;
+            if (!focusPoint) {
                 statusMsg.innerText = "Searching...";
                 statusMsg.style.background = "rgba(50, 50, 50, 0.6)";
             }
-            detectedQuad = null;
         }
 
-        // Cleanup
         src.delete(); gray.delete(); contours.delete(); hierarchy.delete();
 
     } catch (err) {
