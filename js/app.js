@@ -1,3 +1,10 @@
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then((reg) => console.log('Service Worker registered!', reg))
+      .catch((err) => console.error('Service Worker failed:', err));
+  });
+}
 let scannedDocs = [];
 let handlePoints = [{x: 50, y: 50}, {x: 250, y: 50}, {x: 250, y: 350}, {x: 50, y: 350}];
 let currentRawImg = null;
