@@ -83,6 +83,7 @@ function setupTouchFocus() {
     const app = document.getElementById('app-container');
     
     app.addEventListener('click', (e) => {
+        // Prevent targeting when clicking UI elements
         if (e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.closest('.modal')) return;
 
         const rect = video.getBoundingClientRect();
@@ -261,7 +262,12 @@ function setupButtons() {
     document.getElementById('export-btn').onclick = exportPDF;
 
     // About & Donate Logic
-    document.getElementById('about-btn').onclick = () => toggleModal('about-modal', true);
+    // FIXED: Close settings menu first, then open About
+    document.getElementById('about-btn').onclick = () => {
+        toggleModal('settings-modal', false);
+        toggleModal('about-modal', true);
+    };
+    
     document.getElementById('close-about').onclick = () => toggleModal('about-modal', false);
 }
 
