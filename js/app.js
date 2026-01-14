@@ -1,3 +1,4 @@
+// --- STATE MANAGEMENT ---
 let scannedDocs = [];
 let currentRawImg = null;
 let currentEditIndex = -1;
@@ -16,7 +17,7 @@ const statusMsg = document.getElementById('status-msg');
 const scanCount = document.getElementById('scan-count');
 const lastScanImg = document.getElementById('last-scan-img');
 const uiLayer = document.querySelector('.ui-layer');
-const focusRing = document.getElementById('focus-ring'); // NEW
+const focusRing = document.getElementById('focus-ring');
 
 // --- 1. STARTUP ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -77,7 +78,7 @@ function resizeCanvas() {
     }
 }
 
-// --- 3. TOUCH TO TARGET (IMPROVED) ---
+// --- 3. TOUCH TO TARGET ---
 function setupTouchFocus() {
     const app = document.getElementById('app-container');
     
@@ -86,17 +87,15 @@ function setupTouchFocus() {
 
         // 1. Math for Click Position
         const rect = video.getBoundingClientRect();
-        // Handle "object-fit: cover" offset if necessary, but this is usually close enough
         const scaleX = video.videoWidth / rect.width;
         const scaleY = video.videoHeight / rect.height;
-
         const clickX = (e.clientX - rect.left) * scaleX;
         const clickY = (e.clientY - rect.top) * scaleY;
 
         // 2. Set Logic Point
         focusPoint = { x: clickX, y: clickY };
         
-        // 3. Move Visual Ring (CSS)
+        // 3. Move Visual Ring
         focusRing.style.display = 'block';
         focusRing.style.left = e.clientX + 'px';
         focusRing.style.top = e.clientY + 'px';
@@ -109,14 +108,14 @@ function setupTouchFocus() {
         if (focusTimer) clearTimeout(focusTimer);
         focusTimer = setTimeout(() => {
             focusPoint = null;
-            focusRing.style.display = 'none'; // Hide ring
+            focusRing.style.display = 'none'; 
             statusMsg.innerText = "Auto Scan";
             statusMsg.style.background = "rgba(0, 150, 255, 0.6)";
         }, 4000);
     });
 }
 
-// --- 4. THE SMART AI LOOP ---
+// --- 4. THE BLOB DETECTION LOOP (ROBUST) ---
 function processVideoFrame() {
     if (!isCVReady || video.paused || video.ended || video.videoWidth === 0) {
         requestAnimationFrame(processVideoFrame);
@@ -128,108 +127,106 @@ function processVideoFrame() {
         const height = video.videoHeight;
         const ctx = overlayCanvas.getContext('2d');
 
+        // 1. Read Frame (Downscale slightly for speed if needed, but 1080p is usually fine on modern phones)
         let src = new cv.Mat(height, width, cv.CV_8UC4);
         let cap = new cv.VideoCapture(video);
         cap.read(src);
 
-        // Pre-process (Lower threshold for better detection in low light)
+        // 2. Heavy Pre-processing (The "Blob" Trick)
         let gray = new cv.Mat();
         cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-        cv.Canny(gray, gray, 30, 120); // Sensitive edge detection
+        
+        // Blur heavily to remove text details and just see the "page shape"
+        cv.GaussianBlur(gray, gray, new cv.Size(11, 11), 0);
+        
+        // Canny Edge Detection
+        let edges = new cv.Mat();
+        cv.Canny(gray, edges, 75, 200);
 
+        // Dilate (Thicken) edges to close gaps caused by fingers/glare
+        let kernel = cv.Mat.ones(5, 5, cv.CV_8U);
+        cv.dilate(edges, edges, kernel);
+
+        // 3. Find Contours
         let contours = new cv.MatVector();
         let hierarchy = new cv.Mat();
-        cv.findContours(gray, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+        cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-        let bestQuad = null;
+        // 4. Find the Best Blob
+        let bestContour = null;
         let maxArea = 0;
-        let roughShape = null;
+        let minArea = width * height * 0.10; // Must be 10% of screen
 
         for (let i = 0; i < contours.size(); ++i) {
             let cnt = contours.get(i);
             let area = cv.contourArea(cnt);
-            let minArea = width * height * 0.05; // 5% of screen
 
             if (area > minArea) {
-                // FOCUS LOGIC: If user tapped, only look at shapes containing that point
+                // Focus Check
                 if (focusPoint) {
                     const result = cv.pointPolygonTest(cnt, new cv.Point(focusPoint.x, focusPoint.y), false);
-                    if (result < 0) { // -1 means outside
-                        cnt.delete();
-                        continue; 
-                    }
+                    if (result < 0) { cnt.delete(); continue; }
                 }
 
-                // "Rubber Band" Logic (Convex Hull)
-                // This fixes the "fingers blocking edges" problem
-                let hull = new cv.Mat();
-                cv.convexHull(cnt, hull, false, true);
-                
-                // Approximate the Hull to a polygon
-                let approx = new cv.Mat();
-                let peri = cv.arcLength(hull, true);
-                cv.approxPolyDP(hull, approx, 0.04 * peri, true); // 0.04 is looser than 0.02
-
-                // If it has 4 corners, it's a quad. If not, it's a rough shape.
-                if (approx.rows === 4 && area > maxArea) {
-                    if (bestQuad) bestQuad.delete();
-                    bestQuad = approx;
+                if (area > maxArea) {
                     maxArea = area;
-                } else if (!bestQuad && area > maxArea) {
-                    // Fallback: If we can't find a perfect quad, keep the biggest hull
-                    if (roughShape) roughShape.delete();
-                    roughShape = approx;
+                    if (bestContour) bestContour.delete();
+                    bestContour = cnt; // Save the raw contour, don't approximate yet
                 } else {
-                    approx.delete();
+                    cnt.delete();
                 }
-                hull.delete();
+            } else {
+                cnt.delete();
             }
-            cnt.delete();
         }
 
-        // --- DRAWING ---
+        // 5. Extract Corners from the Blob
         ctx.clearRect(0, 0, width, height);
         ctx.lineWidth = 5;
 
-        // If we found a Lock (Blue)
-        if (bestQuad) {
-            statusMsg.innerText = focusPoint ? "Target Locked" : "Scan Ready";
-            statusMsg.style.background = "rgba(0, 200, 0, 0.6)"; 
+        if (bestContour) {
+            // Calculate Convex Hull to smooth out fingers
+            let hull = new cv.Mat();
+            cv.convexHull(bestContour, hull, false, true);
             
-            let points = getQuadPoints(bestQuad);
-            detectedQuad = sortPoints(points);
-            drawPoly(ctx, points, '#007AFF', 'rgba(0, 122, 255, 0.2)');
-            bestQuad.delete();
-            if (roughShape) roughShape.delete();
+            // Approximate polygon from hull
+            let approx = new cv.Mat();
+            let peri = cv.arcLength(hull, true);
+            cv.approxPolyDP(hull, approx, 0.02 * peri, true);
 
-        } 
-        // If we found a Rough Shape (Yellow) - Often happens with fingers
-        else if (roughShape) {
-            // Even if it's rough, we use it if the user Tapped!
-            if (focusPoint) {
-                statusMsg.innerText = "Target Found";
-                statusMsg.style.background = "rgba(255, 165, 0, 0.8)";
-                
-                // Convert rough shape to bounding box for cropping
-                let rect = cv.boundingRect(roughShape);
-                detectedQuad = [
-                    {x: rect.x, y: rect.y},
-                    {x: rect.x + rect.width, y: rect.y},
-                    {x: rect.x + rect.width, y: rect.y + rect.height},
-                    {x: rect.x, y: rect.y + rect.height}
-                ];
-                
-                // Draw Yellow Box
-                drawPoly(ctx, detectedQuad, '#FFD700', 'rgba(255, 215, 0, 0.1)');
-            } else {
-                statusMsg.innerText = "Aligning...";
-                statusMsg.style.background = "rgba(255, 165, 0, 0.6)";
-                detectedQuad = null;
+            // INTELLIGENT CORNER FINDER
+            // Even if approx has 5, 6, or 10 points, we find the 4 "Extreme" corners
+            // This prevents the "flickering" when detection isn't perfect
+            let points = [];
+            
+            // Convert Mat to JS Array
+            for (let i = 0; i < approx.rows; i++) {
+                points.push({ x: approx.data32S[i * 2], y: approx.data32S[i * 2 + 1] });
             }
-            roughShape.delete();
-        } 
-        else {
+
+            // Force 4 corners using coordinate math
+            // TL: Min(x+y), BR: Max(x+y), TR: Max(x-y), BL: Min(x-y)
+            // This is robust against rotation
+            if (points.length >= 4) {
+                let tl = points.reduce((prev, curr) => (curr.x + curr.y) < (prev.x + prev.y) ? curr : prev);
+                let br = points.reduce((prev, curr) => (curr.x + curr.y) > (prev.x + prev.y) ? curr : prev);
+                let tr = points.reduce((prev, curr) => (curr.x - curr.y) > (prev.x - prev.y) ? curr : prev);
+                let bl = points.reduce((prev, curr) => (curr.x - curr.y) < (prev.x - prev.y) ? curr : prev);
+                
+                detectedQuad = [tl, tr, br, bl]; // Order matters for drawing
+            } else {
+                // Fallback for simple shapes (rect)
+                detectedQuad = sortPoints(points);
+            }
+
+            // Draw Stability
+            statusMsg.innerText = "Scan Ready";
+            statusMsg.style.background = "rgba(0, 200, 0, 0.6)"; 
+
+            drawPoly(ctx, detectedQuad, '#007AFF', 'rgba(0, 122, 255, 0.2)');
+
+            hull.delete(); approx.delete(); bestContour.delete();
+        } else {
             detectedQuad = null;
             if (!focusPoint) {
                 statusMsg.innerText = "Searching...";
@@ -237,7 +234,8 @@ function processVideoFrame() {
             }
         }
 
-        src.delete(); gray.delete(); contours.delete(); hierarchy.delete();
+        // Cleanup
+        src.delete(); gray.delete(); edges.delete(); contours.delete(); hierarchy.delete(); kernel.delete();
 
     } catch (err) {
         console.log(err);
@@ -247,15 +245,8 @@ function processVideoFrame() {
 }
 
 // --- HELPER FUNCTIONS ---
-function getQuadPoints(mat) {
-    let points = [];
-    for (let i = 0; i < 4; i++) {
-        points.push({ x: mat.data32S[i * 2], y: mat.data32S[i * 2 + 1] });
-    }
-    return points;
-}
-
 function drawPoly(ctx, points, stroke, fill) {
+    if (!points || points.length < 3) return;
     ctx.strokeStyle = stroke;
     ctx.fillStyle = fill;
     ctx.beginPath();
@@ -264,9 +255,19 @@ function drawPoly(ctx, points, stroke, fill) {
     ctx.closePath();
     ctx.stroke();
     ctx.fill();
+    
+    // Draw Corner Dots
+    ctx.fillStyle = 'white';
+    points.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+    });
 }
 
 function sortPoints(points) {
+    // Basic sorting if we have exactly 4 points from approx
+    if (points.length !== 4) return points;
     points.sort((a, b) => a.y - b.y);
     let top = points.slice(0, 2).sort((a, b) => a.x - b.x);
     let bottom = points.slice(2, 4).sort((a, b) => b.x - a.x);
@@ -332,7 +333,7 @@ function setupHandles(w, h, autoPoints, scale) {
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
     let positions;
-    if (autoPoints) {
+    if (autoPoints && autoPoints.length === 4) {
         positions = [
             { x: autoPoints[0].x * scale, y: autoPoints[0].y * scale },
             { x: autoPoints[1].x * scale, y: autoPoints[1].y * scale },
