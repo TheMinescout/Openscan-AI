@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OpenScan-AI Web Pro</title>
+    <title>OpenScan-AI Pro</title>
     <link rel="stylesheet" href="css/style.css">
     <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -12,7 +12,7 @@
     <div id="app-container">
         <div class="top-bar">
             <button id="delete-last-btn" class="icon-btn">🗑️</button>
-            <div id="status-msg">Loading AI...</div>
+            <div id="status-msg">Initializing Camera...</div>
             <button id="export-btn" class="text-btn">Save PDF</button>
         </div>
 
@@ -37,10 +37,10 @@
             </div>
             <div class="crop-container" id="crop-ui-container">
                 <canvas id="crop-canvas"></canvas>
-                <div id="handle-0" class="crop-handle" data-id="0"></div>
-                <div id="handle-1" class="crop-handle" data-id="1"></div>
-                <div id="handle-2" class="crop-handle" data-id="2"></div>
-                <div id="handle-3" class="crop-handle" data-id="3"></div>
+                <div id="handle-0" class="crop-handle"></div>
+                <div id="handle-1" class="crop-handle"></div>
+                <div id="handle-2" class="crop-handle"></div>
+                <div id="handle-3" class="crop-handle"></div>
             </div>
         </div>
     </div>
