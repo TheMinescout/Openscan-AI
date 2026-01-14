@@ -10,9 +10,16 @@ const statusMsg = document.getElementById('status-msg');
 const scanCount = document.getElementById('scan-count');
 const lastScanImg = document.getElementById('last-scan-img');
 
-// --- 1. INITIALIZATION ---
-async function init() {
-    // A. Start Camera
+// --- 1. STARTUP LOGIC ---
+window.onload = function() {
+    // A. Start Camera immediately
+    startCamera();
+
+    // B. Activate Buttons immediately (Fixes "Settings won't open")
+    setupButtons();
+};
+
+async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
             video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -29,41 +36,41 @@ async function init() {
         statusMsg.innerText = "Camera Denied";
         statusMsg.style.background = "rgba(255, 0, 0, 0.4)";
     }
-
-    // B. Attach ALL Button Listeners (Moved here to ensure they exist)
-    attachEventListeners();
 }
 
-function attachEventListeners() {
+function setupButtons() {
     // Capture
-    document.getElementById('capture-btn').onclick = captureImage;
-    
-    // Crop Modal Actions
+    const capBtn = document.getElementById('capture-btn');
+    if (capBtn) capBtn.onclick = captureImage;
+
+    // Crop Modal
     document.getElementById('done-crop').onclick = finishCrop;
     document.getElementById('cancel-crop').onclick = () => toggleModal('crop-modal', false);
 
-    // Gallery Actions
+    // Gallery & Editor
     document.getElementById('gallery-trigger').onclick = openGallery;
     document.getElementById('close-gallery').onclick = () => toggleModal('gallery-modal', false);
-
-    // Editor Actions
     document.getElementById('close-editor').onclick = () => toggleModal('editor-modal', false);
     document.getElementById('delete-page-btn').onclick = deleteCurrentPage;
 
-    // Settings Actions
-    document.getElementById('settings-btn').onclick = () => toggleModal('settings-modal', true);
+    // Settings (Fixing the specific issue you mentioned)
+    document.getElementById('settings-btn').onclick = () => {
+        toggleModal('settings-modal', true);
+    };
     document.getElementById('close-settings').onclick = () => toggleModal('settings-modal', false);
 }
 
-// --- 2. HELPER: TOGGLE MODALS ---
+// --- 2. MODAL HELPER ---
 function toggleModal(modalId, show) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.style.display = show ? 'flex' : 'none';
+    } else {
+        console.error(`Modal #${modalId} not found in HTML!`);
     }
 }
 
-// --- 3. CAPTURE & CROP ---
+// --- 3. CAPTURE & SMART CROP ---
 function captureImage() {
     // Flash Effect
     video.style.opacity = "0.5";
@@ -81,29 +88,41 @@ function captureImage() {
 
 function prepareCropModal(imgSrc) {
     const modal = document.getElementById('crop-modal');
+    const container = document.getElementById('crop-ui-container'); // We resize this div!
     const c = document.getElementById('crop-canvas');
     const ctx = c.getContext('2d');
     const img = new Image();
 
     img.onload = () => {
-        // Scale image to fit 90% of screen width
-        const maxWidth = window.innerWidth * 0.9;
-        const scale = maxWidth / img.width;
+        // 1. Calculate Available Screen Space (leaving room for header)
+        const maxW = window.innerWidth * 0.95;
+        const maxH = (window.innerHeight - 80) * 0.95; // Subtract 80px for header buttons
+
+        // 2. Calculate "Contain" Ratio (Fits BOTH width and height)
+        const scale = Math.min(maxW / img.width, maxH / img.height);
         
-        c.width = maxWidth;
-        c.height = img.height * scale;
+        const finalW = img.width * scale;
+        const finalH = img.height * scale;
         
-        ctx.drawImage(img, 0, 0, c.width, c.height);
+        // 3. Set Canvas Size
+        c.width = finalW;
+        c.height = finalH;
+        ctx.drawImage(img, 0, 0, finalW, finalH);
         
+        // 4. CRITICAL FIX: Resize the Container to match the Canvas exactly.
+        // This forces the "0,0" coordinate of the container to match the image.
+        container.style.width = finalW + "px";
+        container.style.height = finalH + "px";
+
         toggleModal('crop-modal', true);
         
-        // Initialize Handles
-        setupHandles(c.width, c.height);
+        // 5. Place Handles
+        setupHandles(finalW, finalH);
     };
     img.src = imgSrc;
 }
 
-// --- 4. DRAGGABLE HANDLES (FIXED FOR DESKTOP & MOBILE) ---
+// --- 4. DRAGGABLE HANDLES (FIXED) ---
 function setupHandles(w, h) {
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
@@ -111,35 +130,35 @@ function setupHandles(w, h) {
     // Default Positions (Corners with padding)
     const padding = 20;
     const positions = [
-        {x: padding, y: padding},         // TL
-        {x: w - padding, y: padding},     // TR
-        {x: w - padding, y: h - padding}, // BR
-        {x: padding, y: h - padding}      // BL
+        {x: padding, y: padding},         // Top-Left
+        {x: w - padding, y: padding},     // Top-Right
+        {x: w - padding, y: h - padding}, // Bottom-Right
+        {x: padding, y: h - padding}      // Bottom-Left
     ];
 
     handles.forEach((handle, i) => {
-        // Set Initial Position
+        // Position handle
         handle.style.left = positions[i].x + 'px';
         handle.style.top = positions[i].y + 'px';
 
-        // MOUSE EVENTS (Desktop)
+        // Clear old listeners to prevent stacking
+        handle.onmousedown = null;
+        handle.ontouchstart = null;
+
+        // Attach new listeners
         handle.onmousedown = (e) => startDrag(e, handle, container, false);
-        
-        // TOUCH EVENTS (Mobile)
         handle.ontouchstart = (e) => startDrag(e, handle, container, true);
     });
 }
 
 function startDrag(e, handle, container, isTouch) {
-    e.preventDefault(); // Stop text selection/scrolling
+    e.preventDefault(); 
     
-    // 1. Get container offset ONCE at start of drag
+    // 1. Get container offset ONCE at start
     const rect = container.getBoundingClientRect();
 
     function move(event) {
-        event.preventDefault();
-        
-        // Get pointer coordinates (Mouse or Touch)
+        // Get pointer coordinates
         const clientX = isTouch ? event.touches[0].clientX : event.clientX;
         const clientY = isTouch ? event.touches[0].clientY : event.clientY;
 
@@ -147,7 +166,7 @@ function startDrag(e, handle, container, isTouch) {
         let x = clientX - rect.left;
         let y = clientY - rect.top;
 
-        // 3. Apply to handle
+        // 3. Update handle
         handle.style.left = x + 'px';
         handle.style.top = y + 'px';
     }
@@ -162,7 +181,7 @@ function startDrag(e, handle, container, isTouch) {
         }
     }
 
-    // Attach listeners to DOCUMENT (so you can drag outside the handle and it still works)
+    // Attach to document to prevent "losing" the handle if moving fast
     if (isTouch) {
         document.ontouchmove = move;
         document.ontouchend = stop;
@@ -181,37 +200,33 @@ function finishCrop() {
 function saveScan(imgData) {
     scannedDocs.push(imgData);
 
-    // Animation Logic
+    // Animation
     freezeLayer.style.backgroundImage = `url(${imgData})`;
     freezeLayer.style.display = 'block';
-    
-    // Force Reflow
-    void freezeLayer.offsetWidth;
-    
+    void freezeLayer.offsetWidth; // Force Reflow
     freezeLayer.classList.add('fly-to-corner');
 
     setTimeout(() => {
         freezeLayer.style.display = 'none';
         freezeLayer.classList.remove('fly-to-corner');
         
-        // Update Thumbnail
         lastScanImg.src = imgData;
         lastScanImg.style.display = 'block';
         scanCount.innerText = scannedDocs.length;
     }, 700);
 }
 
-// --- 6. GALLERY & EDITOR LOGIC ---
+// --- 6. GALLERY & EDITOR ---
 function openGallery() {
     if (scannedDocs.length === 0) return;
     
     const grid = document.getElementById('gallery-grid');
-    grid.innerHTML = ''; // Clear previous
+    grid.innerHTML = '';
     
     scannedDocs.forEach((doc, index) => {
         const img = document.createElement('img');
         img.src = doc;
-        img.onclick = () => openEditor(index); // Click thumb to open editor
+        img.onclick = () => openEditor(index);
         grid.appendChild(img);
     });
 
@@ -232,10 +247,8 @@ function deleteCurrentPage() {
         scannedDocs.splice(currentEditIndex, 1);
         toggleModal('editor-modal', false);
         
-        // Refresh Gallery or Close it if empty
         if (scannedDocs.length > 0) {
-            openGallery(); // Refresh grid
-            // Update main screen thumbnail
+            openGallery(); 
             lastScanImg.src = scannedDocs[scannedDocs.length - 1];
             scanCount.innerText = scannedDocs.length;
         } else {
@@ -245,6 +258,3 @@ function deleteCurrentPage() {
         }
     }
 }
-
-// Start App
-window.onload = init;
