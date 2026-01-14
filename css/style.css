@@ -228,32 +228,34 @@ body, html {
 .primary-text { color: var(--primary); font-weight: bold; background: none; border: none; font-size: 16px; }
 .modal-header button { background: none; border: none; color: #fff; font-size: 15px; }
 
+/* ... existing css ... */
+
 .crop-container {
-    flex: 1;
-    position: relative;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden;
+    position: relative; /* Anchor for absolute children */
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    /* Remove 'display: flex' so absolute positioning works reliably */
+    display: block; 
 }
 
 #crop-canvas {
-    max-width: 90%;
-    max-height: 80%;
-    box-shadow: 0 0 30px rgba(0,0,0,0.5);
+    display: block;
+    width: 100%;
+    height: 100%;
+    /* No object-fit here, we handle sizing in JS */
 }
 
 .crop-handle {
     position: absolute;
-    width: 32px;
-    height: 32px;
-    background: rgba(0, 122, 255, 0.5);
+    width: 30px; 
+    height: 30px;
+    background: rgba(0, 122, 255, 0.4); /* Transparent Blue */
     border: 2px solid #fff;
     border-radius: 50%;
-    transform: translate(-50%, -50%);
+    z-index: 10;
     touch-action: none;
+    /* IMPORTANT: The handle's "position" is its top-left corner.
+       We don't translate(-50%, -50%) here because we do the math in JS. */
 }
-
 /* 9. Animations */
 #freeze-layer {
     position: fixed;
