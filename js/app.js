@@ -4,88 +4,72 @@ let currentRawImg = null;
 
 const video = document.getElementById('video-feed');
 const canvas = document.getElementById('overlay-canvas');
-const freezeLayer = document.getElementById('freeze-layer');
+const statusMsg = document.getElementById('status-msg');
 
-// Initialize Camera
 async function init() {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    video.srcObject = stream;
-    video.onloadedmetadata = () => {
-        document.getElementById('status-msg').innerText = "Scanner Active";
-        video.play();
-    };
-}
+    // Camera access requires a secure context (HTTPS or Localhost)
+    if (!window.isSecureContext) {
+        statusMsg.innerText = "Error: HTTPS required for camera";
+        return;
+    }
 
-// Draggable Corner Logic
-function setupDraggable() {
-    const handles = document.querySelectorAll('.crop-handle');
-    const container = document.getElementById('crop-ui-container');
-    
-    handles.forEach((h, i) => {
-        h.onpointermove = (e) => {
-            if (e.buttons > 0) {
-                const rect = container.getBoundingClientRect();
-                h.style.left = e.clientX + 'px';
-                h.style.top = e.clientY + 'px';
-                handlePoints[i] = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-            }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, 
+            audio: false 
+        });
+        video.srcObject = stream;
+        
+        // Wait for video to be ready before drawing
+        video.onloadedmetadata = () => {
+            statusMsg.innerText = "Camera Active";
+            video.play();
+            startAIOverlay(); 
         };
-    });
+    } catch (e) {
+        statusMsg.innerText = "Error: Camera access denied";
+        console.error(e);
+    }
 }
 
-// WARP PERSPECTIVE LOGIC (The "Genius" Feature)
-function warpDocument() {
-    let src = cv.imread('crop-canvas');
-    let dst = new cv.Mat();
+function startAIOverlay() {
+    if (typeof cv === 'undefined' || !video.videoWidth) {
+        setTimeout(startAIOverlay, 500); // Wait for OpenCV to load
+        return;
+    }
     
-    // Convert our 4 handle points to a OpenCV Matrix
-    let srcCoords = cv.matFromArray(4, 1, cv.CV_32FC2, [
-        handlePoints[0].x * 4, handlePoints[0].y * 4, // Scaled back up
-        handlePoints[1].x * 4, handlePoints[1].y * 4,
-        handlePoints[2].x * 4, handlePoints[2].y * 4,
-        handlePoints[3].x * 4, handlePoints[3].y * 4
-    ]);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
 
-    let dsize = new cv.Size(src.cols, src.rows);
-    let dstCoords = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, src.cols, 0, src.cols, src.rows, 0, src.rows]);
-
-    let M = cv.getPerspectiveTransform(srcCoords, dstCoords);
-    cv.warpPerspective(src, dst, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
-    
-    cv.imshow('hidden-canvas', dst);
-    const warpedData = document.getElementById('hidden-canvas').toDataURL();
-    
-    src.delete(); dst.delete(); M.delete(); srcCoords.delete(); dstCoords.delete();
-    return warpedData;
+    function loop() {
+        if (video.paused || video.ended) return;
+        // AI edge detection logic can be added here
+        requestAnimationFrame(loop);
+    }
+    loop();
 }
 
+// CAPTURE Logic
 document.getElementById('capture-btn').onclick = () => {
     const hidden = document.getElementById('hidden-canvas');
-    hidden.width = video.videoWidth; hidden.height = video.videoHeight;
+    hidden.width = video.videoWidth;
+    hidden.height = video.videoHeight;
     hidden.getContext('2d').drawImage(video, 0, 0);
-    currentRawImg = hidden.toDataURL();
+    
+    currentRawImg = hidden.toDataURL('image/jpeg', 0.9);
     
     const img = new Image();
     img.onload = () => {
         const c = document.getElementById('crop-canvas');
-        c.width = img.width / 4; c.height = img.height / 4;
+        c.width = img.width / 4;
+        c.height = img.height / 4;
         c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
         document.getElementById('crop-modal').style.display = 'flex';
-        setupDraggable();
     };
     img.src = currentRawImg;
 };
 
-document.getElementById('done-crop').onclick = () => {
-    const finalImg = warpDocument();
-    scannedDocs.push(finalImg);
-    
-    // Animation
-    freezeLayer.style.backgroundImage = `url(${finalImg})`;
-    freezeLayer.classList.add('fly-to-corner');
-    
-    document.getElementById('crop-modal').style.display = 'none';
-    document.getElementById('scan-count').innerText = scannedDocs.length;
-};
+// ... Remaining gallery and PDF export logic from previous steps ...
 
 window.onload = init;
