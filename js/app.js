@@ -1,6 +1,7 @@
 // --- STATE MANAGEMENT ---
 let scannedDocs = [];
-let currentRawImg = null; // The full resolution original
+let currentRawImg = null; // High-res original
+let previewImgObj = null; // The loaded image object for the crop preview
 let currentEditIndex = -1;
 
 // DOM Elements
@@ -9,9 +10,9 @@ const freezeLayer = document.getElementById('freeze-layer');
 const statusMsg = document.getElementById('status-msg');
 const scanCount = document.getElementById('scan-count');
 const lastScanImg = document.getElementById('last-scan-img');
+const uiLayer = document.querySelector('.ui-layer'); // The overlay buttons
 
-// --- 1. STARTUP LOGIC ---
-// We use 'DOMContentLoaded' to wire up buttons instantly, before images load.
+// --- 1. STARTUP ---
 document.addEventListener('DOMContentLoaded', () => {
     setupButtons();
     startCamera();
@@ -20,11 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                facingMode: "environment", 
-                width: { ideal: 1920 }, 
-                height: { ideal: 1080 } 
-            },
+            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
             audio: false
         });
         video.srcObject = stream;
@@ -34,42 +31,46 @@ async function startCamera() {
             statusMsg.style.background = "rgba(0, 200, 0, 0.4)";
         };
     } catch (e) {
-        console.error("Camera Error:", e);
-        statusMsg.innerText = "Check Camera Permissions";
+        console.error(e);
+        statusMsg.innerText = "Check Permission";
         statusMsg.style.background = "rgba(255, 0, 0, 0.4)";
     }
 }
 
 function setupButtons() {
-    // Capture
-    const capBtn = document.getElementById('capture-btn');
-    if (capBtn) capBtn.onclick = captureImage;
-
-    // Crop Modal
+    document.getElementById('capture-btn').onclick = captureImage;
     document.getElementById('done-crop').onclick = finishCrop;
     document.getElementById('cancel-crop').onclick = () => toggleModal('crop-modal', false);
 
-    // Gallery & Editor
     document.getElementById('gallery-trigger').onclick = openGallery;
     document.getElementById('close-gallery').onclick = () => toggleModal('gallery-modal', false);
+    
     document.getElementById('close-editor').onclick = () => toggleModal('editor-modal', false);
     document.getElementById('delete-page-btn').onclick = deleteCurrentPage;
 
-    // Settings
     document.getElementById('settings-btn').onclick = () => toggleModal('settings-modal', true);
     document.getElementById('close-settings').onclick = () => toggleModal('settings-modal', false);
 }
 
+// --- 2. VISIBILITY MANAGER ---
 function toggleModal(modalId, show) {
     const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.style.display = show ? 'flex' : 'none';
+    if (!modal) return;
+
+    if (show) {
+        modal.style.display = 'flex';
+        // HIDE the main camera buttons when a modal is open
+        uiLayer.style.display = 'none';
+    } else {
+        modal.style.display = 'none';
+        // SHOW the main camera buttons when going back to camera
+        uiLayer.style.display = 'flex';
     }
 }
 
-// --- 2. CAPTURE & SMART CROP ---
+// --- 3. CAPTURE & PREPARE ---
 function captureImage() {
-    // Visual flash
+    // Flash
     video.style.opacity = "0.5";
     setTimeout(() => video.style.opacity = "1", 100);
 
@@ -77,56 +78,80 @@ function captureImage() {
     hidden.width = video.videoWidth;
     hidden.height = video.videoHeight;
     const ctx = hidden.getContext('2d');
-    
-    // Draw full video frame to hidden canvas
     ctx.drawImage(video, 0, 0);
     
-    // Save the FULL RES image for cropping later
     currentRawImg = hidden.toDataURL('image/jpeg', 0.9);
-    
     prepareCropModal(currentRawImg);
 }
 
 function prepareCropModal(imgSrc) {
-    const modal = document.getElementById('crop-modal');
     const container = document.getElementById('crop-ui-container');
     const c = document.getElementById('crop-canvas');
-    const ctx = c.getContext('2d');
-    const img = new Image();
+    previewImgObj = new Image();
 
-    img.onload = () => {
-        // Fit canvas to screen
+    previewImgObj.onload = () => {
+        // Fit to screen logic
         const maxW = window.innerWidth * 0.95;
         const maxH = (window.innerHeight - 80) * 0.95;
-        const scale = Math.min(maxW / img.width, maxH / img.height);
+        const scale = Math.min(maxW / previewImgObj.width, maxH / previewImgObj.height);
         
-        const finalW = img.width * scale;
-        const finalH = img.height * scale;
+        const finalW = previewImgObj.width * scale;
+        const finalH = previewImgObj.height * scale;
         
         c.width = finalW;
         c.height = finalH;
-        ctx.drawImage(img, 0, 0, finalW, finalH);
-        
-        // Resize container to match image exactly
         container.style.width = finalW + "px";
         container.style.height = finalH + "px";
-        
-        // Store the scale factor so we can crop the original later
         container.dataset.scale = scale;
 
         toggleModal('crop-modal', true);
+        
+        // Setup handles and Draw the first set of lines
         setupHandles(finalW, finalH);
+        drawCropLines(); 
     };
-    img.src = imgSrc;
+    previewImgObj.src = imgSrc;
 }
 
-// --- 3. DRAGGABLE HANDLES ---
+// --- 4. DRAWING & DRAGGING ---
+function drawCropLines() {
+    const c = document.getElementById('crop-canvas');
+    const ctx = c.getContext('2d');
+    const handles = document.querySelectorAll('.crop-handle');
+    
+    // 1. Clear and Redraw Image (Clean slate)
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(previewImgObj, 0, 0, c.width, c.height);
+
+    // 2. Get handle centers
+    // We add 16px (half of 32px width) to get center of handle
+    const p1 = { x: parseFloat(handles[0].style.left) + 16, y: parseFloat(handles[0].style.top) + 16 };
+    const p2 = { x: parseFloat(handles[1].style.left) + 16, y: parseFloat(handles[1].style.top) + 16 };
+    const p3 = { x: parseFloat(handles[2].style.left) + 16, y: parseFloat(handles[2].style.top) + 16 };
+    const p4 = { x: parseFloat(handles[3].style.left) + 16, y: parseFloat(handles[3].style.top) + 16 };
+
+    // 3. Draw Blue Connecting Lines
+    ctx.beginPath();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#007AFF'; // iOS Blue
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.lineTo(p4.x, p4.y);
+    ctx.closePath(); // Connects p4 back to p1
+    ctx.stroke();
+
+    // Optional: Draw a semi-transparent fill inside
+    ctx.fillStyle = "rgba(0, 122, 255, 0.1)";
+    ctx.fill();
+}
+
 function setupHandles(w, h) {
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
     const padding = 20;
     
-    // Initial Corner Positions
+    // Initial Positions
     const positions = [
         {x: padding, y: padding},
         {x: w - padding, y: padding},
@@ -135,14 +160,11 @@ function setupHandles(w, h) {
     ];
 
     handles.forEach((handle, i) => {
-        handle.style.left = positions[i].x + 'px';
-        handle.style.top = positions[i].y + 'px';
+        // -16 centers the handle (32px / 2)
+        handle.style.left = (positions[i].x - 16) + 'px';
+        handle.style.top = (positions[i].y - 16) + 'px';
         
-        // Clear old listeners
-        handle.onmousedown = null;
-        handle.ontouchstart = null;
-
-        // Add new listeners
+        handle.onmousedown = null; handle.ontouchstart = null;
         handle.onmousedown = (e) => startDrag(e, handle, container, false);
         handle.ontouchstart = (e) => startDrag(e, handle, container, true);
     });
@@ -157,60 +179,49 @@ function startDrag(e, handle, container, isTouch) {
         const clientX = isTouch ? event.touches[0].clientX : event.clientX;
         const clientY = isTouch ? event.touches[0].clientY : event.clientY;
 
-        let x = clientX - rect.left;
-        let y = clientY - rect.top;
+        let x = clientX - rect.left - 16; // -16 to center drag on finger
+        let y = clientY - rect.top - 16;
 
-        // Boundary Checks (Keep inside image)
-        x = Math.max(0, Math.min(x, container.offsetWidth));
-        y = Math.max(0, Math.min(y, container.offsetHeight));
+        // Bounds check
+        x = Math.max(-16, Math.min(x, container.offsetWidth - 16));
+        y = Math.max(-16, Math.min(y, container.offsetHeight - 16));
 
         handle.style.left = x + 'px';
         handle.style.top = y + 'px';
+
+        // REDRAW LINES ON EVERY MOVE
+        requestAnimationFrame(drawCropLines);
     }
 
     function stop() {
-        if (isTouch) {
-            document.ontouchmove = null;
-            document.ontouchend = null;
-        } else {
-            document.onmousemove = null;
-            document.onmouseup = null;
-        }
+        if (isTouch) { document.ontouchmove = null; document.ontouchend = null; }
+        else { document.onmousemove = null; document.onmouseup = null; }
     }
 
-    if (isTouch) {
-        document.ontouchmove = move;
-        document.ontouchend = stop;
-    } else {
-        document.onmousemove = move;
-        document.onmouseup = stop;
-    }
+    if (isTouch) { document.ontouchmove = move; document.ontouchend = stop; }
+    else { document.onmousemove = move; document.onmouseup = stop; }
 }
 
-// --- 4. THE ACTUAL "CROP" LOGIC ---
+// --- 5. FINISH CROP ---
 function finishCrop() {
     toggleModal('crop-modal', false);
 
-    // 1. Get handle positions from UI
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
-    const scale = parseFloat(container.dataset.scale); // Get the scale factor used for preview
+    const scale = parseFloat(container.dataset.scale);
 
-    // Get UI coordinates
-    let x1 = parseFloat(handles[0].style.left);
-    let y1 = parseFloat(handles[0].style.top);
-    let x3 = parseFloat(handles[2].style.left); // Bottom-Right handle
-    let y3 = parseFloat(handles[2].style.top);
+    // Get positions (+16 to adjust for handle center)
+    let x1 = (parseFloat(handles[0].style.left) + 16);
+    let y1 = (parseFloat(handles[0].style.top) + 16);
+    let x3 = (parseFloat(handles[2].style.left) + 16);
+    let y3 = (parseFloat(handles[2].style.top) + 16);
 
-    // 2. Scale coordinates back up to ORIGINAL image size
-    // Note: This is a simple bounding box crop. 
-    // For true perspective warp, we would need the OpenCV logic here.
+    // Scale up
     let realX = x1 / scale;
     let realY = y1 / scale;
     let realW = (x3 - x1) / scale;
     let realH = (y3 - y1) / scale;
 
-    // 3. Crop using a temporary canvas
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = realW;
     tempCanvas.height = realH;
@@ -218,20 +229,14 @@ function finishCrop() {
 
     const originalImg = new Image();
     originalImg.onload = () => {
-        // Draw only the sliced portion
         ctx.drawImage(originalImg, realX, realY, realW, realH, 0, 0, realW, realH);
-        
-        // Save result
-        const finalCroppedData = tempCanvas.toDataURL('image/jpeg', 0.9);
-        saveScan(finalCroppedData);
+        saveScan(tempCanvas.toDataURL('image/jpeg', 0.9));
     };
     originalImg.src = currentRawImg;
 }
 
 function saveScan(imgData) {
     scannedDocs.push(imgData);
-
-    // Animation
     freezeLayer.style.backgroundImage = `url(${imgData})`;
     freezeLayer.style.display = 'block';
     void freezeLayer.offsetWidth; 
@@ -240,14 +245,13 @@ function saveScan(imgData) {
     setTimeout(() => {
         freezeLayer.style.display = 'none';
         freezeLayer.classList.remove('fly-to-corner');
-        
         lastScanImg.src = imgData;
         lastScanImg.style.display = 'block';
         scanCount.innerText = scannedDocs.length;
     }, 700);
 }
 
-// --- 5. GALLERY & EDITOR ---
+// --- 6. HELPERS ---
 function openGallery() {
     if (scannedDocs.length === 0) return;
     const grid = document.getElementById('gallery-grid');
@@ -263,11 +267,8 @@ function openGallery() {
 
 function openEditor(index) {
     currentEditIndex = index;
-    const editorImg = document.getElementById('editor-img');
-    if (editorImg) {
-        editorImg.src = scannedDocs[index];
-        toggleModal('editor-modal', true);
-    }
+    document.getElementById('editor-img').src = scannedDocs[index];
+    toggleModal('editor-modal', true);
 }
 
 function deleteCurrentPage() {
@@ -275,7 +276,7 @@ function deleteCurrentPage() {
         scannedDocs.splice(currentEditIndex, 1);
         toggleModal('editor-modal', false);
         if (scannedDocs.length > 0) {
-            openGallery(); 
+            openGallery();
             lastScanImg.src = scannedDocs[scannedDocs.length - 1];
             scanCount.innerText = scannedDocs.length;
         } else {
