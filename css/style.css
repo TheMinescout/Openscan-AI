@@ -315,3 +315,47 @@ body, html {
     font-size: 16px;
     padding: 10px 0;
 }
+/* Editor Toolbar */
+.editor-toolbar {
+    height: 100px;
+    background: #1a1a1a;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+    border-top: 1px solid #333;
+}
+
+.edit-btn {
+    background: none;
+    border: none;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.edit-btn:active {
+    opacity: 1;
+    transform: scale(0.95);
+}
+
+.edit-btn span {
+    font-size: 24px;
+    background: rgba(255,255,255,0.1);
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.edit-btn.destuctive span {
+    background: rgba(255, 59, 48, 0.2);
+    color: #ff3b30;
+}
