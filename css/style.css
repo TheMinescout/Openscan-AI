@@ -1,14 +1,39 @@
-/* Make the container fill the whole screen */
-#app-container {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-    background: #000;
+/* 1. Global Reset & Variables */
+:root {
+    --primary: #007AFF;
+    --danger: #FF3B30;
+    --glass: rgba(255, 255, 255, 0.15);
+    --glass-heavy: rgba(255, 255, 255, 0.25);
+    --text: #ffffff;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body, html {
+    width: 100%;
+    height: 100%;
+    background-color: #000;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
     overflow: hidden;
 }
 
-/* Video sits at the bottom */
-#video-feed {
+/* 2. Main Layout Container */
+#app-container {
+    position: relative;
+    width: 100dvw; /* Dynamic Viewport Width */
+    height: 100dvh; /* Dynamic Viewport Height */
+    display: flex;
+    flex-direction: column;
+}
+
+/* 3. Camera & AI Overlay Layers */
+#video-feed, #overlay-canvas {
     position: absolute;
     top: 0;
     left: 0;
@@ -18,7 +43,12 @@
     z-index: 1;
 }
 
-/* UI Layer sits on top */
+#overlay-canvas {
+    z-index: 2;
+    pointer-events: none; /* AI lines shouldn't block touches */
+}
+
+/* 4. Floating UI Layer */
 .ui-layer {
     position: absolute;
     top: 0;
@@ -29,48 +59,55 @@
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    pointer-events: none; /* Allows touches to pass through empty space to the video */
+    pointer-events: none; /* Crucial: clicks "fall through" to focus camera */
+    
+    /* Handle Pixel/iPhone Notch */
+    padding-top: env(safe-area-inset-top, 20px);
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+    padding-left: env(safe-area-inset-left, 15px);
+    padding-right: env(safe-area-inset-right, 15px);
 }
 
-/* Buttons need pointer events back */
-.glass-btn, .preview-box, #capture-btn, #settings-btn {
+/* Re-enable pointer events for buttons only */
+.ui-layer button, .ui-layer .preview-box {
     pointer-events: auto;
 }
 
-/* Top Bar: Semi-transparent blur effect (iOS style) */
+/* 5. Top Navigation (Delete, Status, Settings) */
 .top-nav {
-    padding: 50px 20px 20px; /* Extra top padding for notch phones */
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+    padding: 10px 15px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 100%);
 }
 
-.glass-btn {
-    background: rgba(255, 255, 255, 0.2);
+.status-pill {
+    background: rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(10px);
-    border: none;
-    border-radius: 50%;
-    width: 45px;
-    height: 45px;
-    color: white;
-    font-size: 20px;
+    -webkit-backdrop-filter: blur(10px);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Bottom Nav Layout */
+/* 6. Bottom Navigation (Gallery, Shutter, Export) */
 .bottom-nav {
-    padding: 20px 30px 40px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+    padding: 20px 30px 40px;
+    background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%);
 }
 
-/* The shutter button styling */
+/* Shutter Button Ring */
 .shutter-outer {
-    width: 80px;
-    height: 80px;
-    border: 4px solid white;
+    width: 76px;
+    height: 76px;
+    border: 4px solid #fff;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -78,37 +115,142 @@
 }
 
 #capture-btn {
-    width: 64px;
-    height: 64px;
-    background: white;
-    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    background: #fff;
     border: none;
+    border-radius: 50%;
+    box-shadow: 0 0 15px rgba(0,0,0,0.3);
     transition: transform 0.1s;
 }
 
-#capture-btn:active { transform: scale(0.9); }
-
-/* Preview thumbnail */
-.preview-box {
-    width: 55px;
-    height: 55px;
-    border: 2px solid white;
-    border-radius: 8px;
-    overflow: hidden;
-    position: relative;
-    background: #222;
+#capture-btn:active {
+    transform: scale(0.85);
 }
 
-#last-scan-img { width: 100%; height: 100%; object-fit: cover; }
+/* Pro Glass Buttons */
+.glass-btn {
+    background: var(--glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    color: white;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.primary-action {
+    border-radius: 12px;
+    width: auto;
+    padding: 0 18px;
+    font-weight: bold;
+    font-size: 14px;
+    background: var(--primary);
+}
+
+/* 7. Gallery Preview Box */
+.preview-box {
+    width: 50px;
+    height: 60px;
+    background: #222;
+    border-radius: 6px;
+    border: 2px solid #fff;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+}
+
+#last-scan-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
 
 #scan-count {
     position: absolute;
-    bottom: 2px;
-    right: 2px;
+    top: -2px;
+    right: -2px;
     background: var(--primary);
     color: white;
-    padding: 2px 6px;
-    border-radius: 10px;
     font-size: 10px;
     font-weight: bold;
+    padding: 2px 5px;
+    border-radius: 8px;
+}
+
+/* 8. Manual Crop Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 100;
+    flex-direction: column;
+}
+
+.modal-header {
+    height: 60px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #333;
+}
+
+.modal-title { font-weight: bold; }
+.primary-text { color: var(--primary); font-weight: bold; background: none; border: none; font-size: 16px; }
+.modal-header button { background: none; border: none; color: #fff; font-size: 15px; }
+
+.crop-container {
+    flex: 1;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+#crop-canvas {
+    max-width: 90%;
+    max-height: 80%;
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
+}
+
+.crop-handle {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    background: rgba(0, 122, 255, 0.5);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    touch-action: none;
+}
+
+/* 9. Animations */
+#freeze-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background-size: cover;
+    background-position: center;
+    display: none;
+}
+
+.fly-to-corner {
+    display: block !important;
+    animation: snapAndFly 0.75s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+
+@keyframes snapAndFly {
+    0% { transform: scale(1) translate(0,0); opacity: 1; border-radius: 0; }
+    30% { transform: scale(0.9) translate(0,0); opacity: 1; }
+    100% { transform: scale(0.05) translate(-800%, 800%); opacity: 0; border-radius: 50px; }
 }
