@@ -1,24 +1,114 @@
-:root { --primary: #007AFF; --bg: #000; }
-body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); font-family: sans-serif; overflow: hidden; }
-#app-container { position: relative; width: 100vw; height: 100vh; }
-#video-feed, #overlay-canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-
-/* Interactive Crop Handles */
-.crop-handle {
-    position: absolute; width: 34px; height: 34px;
-    background: rgba(0, 122, 255, 0.6); border: 2px solid #fff;
-    border-radius: 50%; z-index: 600; touch-action: none;
-    transform: translate(-50%, -50%); /* Center on coordinate */
+/* Make the container fill the whole screen */
+#app-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    overflow: hidden;
 }
 
-.crop-container { flex: 1; position: relative; background: #111; display: flex; justify-content: center; align-items: center; }
-#crop-canvas { max-width: 90%; max-height: 80%; object-fit: contain; }
+/* Video sits at the bottom */
+#video-feed {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 1;
+}
 
-/* Existing Animations & UI */
-.modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 500; flex-direction: column; }
-.modal-header { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; background: #1a1a1a; color: #fff; }
-.thumbnail-preview { width: 60px; height: 60px; border: 2px solid #fff; border-radius: 10px; overflow: hidden; position: relative; }
-#capture-btn { width: 75px; height: 75px; border-radius: 50%; background: #fff; border: 6px solid rgba(255,255,255,0.3); }
-#freeze-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 200; pointer-events: none; background-size: cover; display: none; }
-.fly-to-corner { display: block !important; animation: zoomAndFly 0.8s forwards; }
-@keyframes zoomAndFly { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.1) translate(-450%, 450%); opacity: 0; } }
+/* UI Layer sits on top */
+.ui-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    pointer-events: none; /* Allows touches to pass through empty space to the video */
+}
+
+/* Buttons need pointer events back */
+.glass-btn, .preview-box, #capture-btn, #settings-btn {
+    pointer-events: auto;
+}
+
+/* Top Bar: Semi-transparent blur effect (iOS style) */
+.top-nav {
+    padding: 50px 20px 20px; /* Extra top padding for notch phones */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+}
+
+.glass-btn {
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+    border: none;
+    border-radius: 50%;
+    width: 45px;
+    height: 45px;
+    color: white;
+    font-size: 20px;
+}
+
+/* Bottom Nav Layout */
+.bottom-nav {
+    padding: 20px 30px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+}
+
+/* The shutter button styling */
+.shutter-outer {
+    width: 80px;
+    height: 80px;
+    border: 4px solid white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#capture-btn {
+    width: 64px;
+    height: 64px;
+    background: white;
+    border-radius: 50%;
+    border: none;
+    transition: transform 0.1s;
+}
+
+#capture-btn:active { transform: scale(0.9); }
+
+/* Preview thumbnail */
+.preview-box {
+    width: 55px;
+    height: 55px;
+    border: 2px solid white;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    background: #222;
+}
+
+#last-scan-img { width: 100%; height: 100%; object-fit: cover; }
+
+#scan-count {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    background: var(--primary);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: bold;
+}
