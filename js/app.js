@@ -1,15 +1,9 @@
+// --- STATE MANAGEMENT ---
 let scannedDocs = [];
 let currentRawImg = null;
 let currentEditIndex = -1;
 
-// Define the 4 corners for the crop (Default values)
-let handlePoints = [
-    {x: 50, y: 50},   // Top-Left
-    {x: 250, y: 50},  // Top-Right
-    {x: 250, y: 350}, // Bottom-Right
-    {x: 50, y: 350}   // Bottom-Left
-];
-
+// DOM Elements
 const video = document.getElementById('video-feed');
 const freezeLayer = document.getElementById('freeze-layer');
 const statusMsg = document.getElementById('status-msg');
@@ -18,8 +12,8 @@ const lastScanImg = document.getElementById('last-scan-img');
 
 // --- 1. INITIALIZATION ---
 async function init() {
+    // A. Start Camera
     try {
-        // Request camera with high resolution
         const stream = await navigator.mediaDevices.getUserMedia({ 
             video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
             audio: false
@@ -31,191 +25,226 @@ async function init() {
             statusMsg.style.background = "rgba(0, 200, 0, 0.4)";
         };
     } catch (e) {
-        console.error(e);
-        statusMsg.innerText = "Camera Error";
+        console.error("Camera Error:", e);
+        statusMsg.innerText = "Camera Denied";
         statusMsg.style.background = "rgba(255, 0, 0, 0.4)";
-        alert("Camera access denied. Please check your browser permissions.");
+    }
+
+    // B. Attach ALL Button Listeners (Moved here to ensure they exist)
+    attachEventListeners();
+}
+
+function attachEventListeners() {
+    // Capture
+    document.getElementById('capture-btn').onclick = captureImage;
+    
+    // Crop Modal Actions
+    document.getElementById('done-crop').onclick = finishCrop;
+    document.getElementById('cancel-crop').onclick = () => toggleModal('crop-modal', false);
+
+    // Gallery Actions
+    document.getElementById('gallery-trigger').onclick = openGallery;
+    document.getElementById('close-gallery').onclick = () => toggleModal('gallery-modal', false);
+
+    // Editor Actions
+    document.getElementById('close-editor').onclick = () => toggleModal('editor-modal', false);
+    document.getElementById('delete-page-btn').onclick = deleteCurrentPage;
+
+    // Settings Actions
+    document.getElementById('settings-btn').onclick = () => toggleModal('settings-modal', true);
+    document.getElementById('close-settings').onclick = () => toggleModal('settings-modal', false);
+}
+
+// --- 2. HELPER: TOGGLE MODALS ---
+function toggleModal(modalId, show) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = show ? 'flex' : 'none';
     }
 }
 
-// --- 2. CAPTURE & CROP FLOW ---
-const captureBtn = document.getElementById('capture-btn');
-if (captureBtn) {
-    captureBtn.addEventListener('click', () => {
-        // Flash Effect
-        video.style.opacity = "0.5";
-        setTimeout(() => video.style.opacity = "1", 100);
+// --- 3. CAPTURE & CROP ---
+function captureImage() {
+    // Flash Effect
+    video.style.opacity = "0.5";
+    setTimeout(() => video.style.opacity = "1", 100);
 
-        // Capture to hidden canvas
-        const hidden = document.getElementById('hidden-canvas');
-        if (!hidden) return; // Safety check
-        
-        hidden.width = video.videoWidth;
-        hidden.height = video.videoHeight;
-        const ctx = hidden.getContext('2d');
-        ctx.drawImage(video, 0, 0);
-        
-        // Save raw data
-        currentRawImg = hidden.toDataURL('image/jpeg', 0.85);
-
-        // Open Crop Modal
-        prepareCropModal(currentRawImg);
-    });
+    const hidden = document.getElementById('hidden-canvas');
+    hidden.width = video.videoWidth;
+    hidden.height = video.videoHeight;
+    const ctx = hidden.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    
+    currentRawImg = hidden.toDataURL('image/jpeg', 0.85);
+    prepareCropModal(currentRawImg);
 }
 
 function prepareCropModal(imgSrc) {
     const modal = document.getElementById('crop-modal');
     const c = document.getElementById('crop-canvas');
-    if (!modal || !c) return;
-
     const ctx = c.getContext('2d');
     const img = new Image();
 
     img.onload = () => {
-        // Calculate aspect ratio to fit screen
+        // Scale image to fit 90% of screen width
         const maxWidth = window.innerWidth * 0.9;
-        const scaleFactor = maxWidth / img.width;
+        const scale = maxWidth / img.width;
         
         c.width = maxWidth;
-        c.height = img.height * scaleFactor;
+        c.height = img.height * scale;
         
         ctx.drawImage(img, 0, 0, c.width, c.height);
         
-        modal.style.display = 'flex';
+        toggleModal('crop-modal', true);
         
-        // Reset handles to corners
-        resetHandles(c.width, c.height);
+        // Initialize Handles
+        setupHandles(c.width, c.height);
     };
     img.src = imgSrc;
 }
 
-function resetHandles(w, h) {
+// --- 4. DRAGGABLE HANDLES (FIXED FOR DESKTOP & MOBILE) ---
+function setupHandles(w, h) {
     const handles = document.querySelectorAll('.crop-handle');
-    // Default positions: 20px padding from edges
+    const container = document.getElementById('crop-ui-container');
+    
+    // Default Positions (Corners with padding)
+    const padding = 20;
     const positions = [
-        {x: 20, y: 20},       // TL
-        {x: w - 20, y: 20},   // TR
-        {x: w - 20, y: h - 20}, // BR
-        {x: 20, y: h - 20}    // BL
+        {x: padding, y: padding},         // TL
+        {x: w - padding, y: padding},     // TR
+        {x: w - padding, y: h - padding}, // BR
+        {x: padding, y: h - padding}      // BL
     ];
 
-    handles.forEach((h, i) => {
-        h.style.left = positions[i].x + 'px';
-        h.style.top = positions[i].y + 'px';
+    handles.forEach((handle, i) => {
+        // Set Initial Position
+        handle.style.left = positions[i].x + 'px';
+        handle.style.top = positions[i].y + 'px';
+
+        // MOUSE EVENTS (Desktop)
+        handle.onmousedown = (e) => startDrag(e, handle, container, false);
         
-        // Enable Touch Dragging
-        makeDraggable(h);
+        // TOUCH EVENTS (Mobile)
+        handle.ontouchstart = (e) => startDrag(e, handle, container, true);
     });
 }
 
-function makeDraggable(el) {
-    let isDragging = false;
+function startDrag(e, handle, container, isTouch) {
+    e.preventDefault(); // Stop text selection/scrolling
     
-    // Touch Events (Mobile)
-    el.ontouchstart = (e) => { isDragging = true; e.preventDefault(); };
-    el.ontouchmove = (e) => {
-        if (!isDragging) return;
-        const touch = e.touches[0];
-        moveElement(el, touch.clientX, touch.clientY);
-    };
-    el.ontouchend = () => { isDragging = false; };
-
-    // Mouse Events (Desktop)
-    el.onmousedown = () => { isDragging = true; };
-    window.onmousemove = (e) => {
-        if (!isDragging) return;
-        moveElement(el, e.clientX, e.clientY);
-    };
-    window.onmouseup = () => { isDragging = false; };
-}
-
-function moveElement(el, clientX, clientY) {
-    const container = document.getElementById('crop-ui-container');
+    // 1. Get container offset ONCE at start of drag
     const rect = container.getBoundingClientRect();
-    
-    // Calculate position relative to the container
-    let x = clientX - rect.left;
-    let y = clientY - rect.top;
-    
-    el.style.left = x + 'px';
-    el.style.top = y + 'px';
+
+    function move(event) {
+        event.preventDefault();
+        
+        // Get pointer coordinates (Mouse or Touch)
+        const clientX = isTouch ? event.touches[0].clientX : event.clientX;
+        const clientY = isTouch ? event.touches[0].clientY : event.clientY;
+
+        // 2. Calculate local position relative to container
+        let x = clientX - rect.left;
+        let y = clientY - rect.top;
+
+        // 3. Apply to handle
+        handle.style.left = x + 'px';
+        handle.style.top = y + 'px';
+    }
+
+    function stop() {
+        if (isTouch) {
+            document.ontouchmove = null;
+            document.ontouchend = null;
+        } else {
+            document.onmousemove = null;
+            document.onmouseup = null;
+        }
+    }
+
+    // Attach listeners to DOCUMENT (so you can drag outside the handle and it still works)
+    if (isTouch) {
+        document.ontouchmove = move;
+        document.ontouchend = stop;
+    } else {
+        document.onmousemove = move;
+        document.onmouseup = stop;
+    }
 }
 
-// --- 3. THE "WARP & KEEP" BUTTON ---
-const doneBtn = document.getElementById('done-crop');
-if (doneBtn) {
-    doneBtn.addEventListener('click', () => {
-        // 1. Close Modal Immediately to unfreeze UI
-        document.getElementById('crop-modal').style.display = 'none';
-
-        // 2. Run Save & Animation
-        saveScan(currentRawImg);
-    });
+// --- 5. FINISH & ANIMATE ---
+function finishCrop() {
+    toggleModal('crop-modal', false);
+    saveScan(currentRawImg);
 }
 
 function saveScan(imgData) {
     scannedDocs.push(imgData);
 
-    // Update Freeze Layer (Animation)
-    if (freezeLayer) {
-        freezeLayer.style.backgroundImage = `url(${imgData})`;
-        freezeLayer.style.display = 'block';
-        
-        // Trigger Reflow
-        void freezeLayer.offsetWidth;
-        
-        freezeLayer.classList.add('fly-to-corner');
+    // Animation Logic
+    freezeLayer.style.backgroundImage = `url(${imgData})`;
+    freezeLayer.style.display = 'block';
+    
+    // Force Reflow
+    void freezeLayer.offsetWidth;
+    
+    freezeLayer.classList.add('fly-to-corner');
 
-        // Hide after animation
-        setTimeout(() => {
-            freezeLayer.style.display = 'none';
-            freezeLayer.classList.remove('fly-to-corner');
-            updateGalleryIcon();
-        }, 700);
-    } else {
-        updateGalleryIcon();
-    }
-}
-
-function updateGalleryIcon() {
-    if (scannedDocs.length > 0) {
-        lastScanImg.src = scannedDocs[scannedDocs.length - 1];
+    setTimeout(() => {
+        freezeLayer.style.display = 'none';
+        freezeLayer.classList.remove('fly-to-corner');
+        
+        // Update Thumbnail
+        lastScanImg.src = imgData;
         lastScanImg.style.display = 'block';
         scanCount.innerText = scannedDocs.length;
-    }
+    }, 700);
 }
 
-// --- 4. CANCEL / RETAKE ---
-const cancelBtn = document.getElementById('cancel-crop');
-if (cancelBtn) {
-    cancelBtn.addEventListener('click', () => {
-        document.getElementById('crop-modal').style.display = 'none';
-    });
-}
-
-// --- 5. GALLERY & EDITOR ---
-const galleryTrigger = document.getElementById('gallery-trigger');
-if (galleryTrigger) {
-    galleryTrigger.addEventListener('click', () => {
-        if(scannedDocs.length === 0) return;
-        renderGallery();
-        document.getElementById('gallery-modal').style.display = 'flex';
-    });
-}
-
-function renderGallery() {
+// --- 6. GALLERY & EDITOR LOGIC ---
+function openGallery() {
+    if (scannedDocs.length === 0) return;
+    
     const grid = document.getElementById('gallery-grid');
-    grid.innerHTML = '';
+    grid.innerHTML = ''; // Clear previous
+    
     scannedDocs.forEach((doc, index) => {
         const img = document.createElement('img');
         img.src = doc;
-        img.onclick = () => openEditor(index);
+        img.onclick = () => openEditor(index); // Click thumb to open editor
         grid.appendChild(img);
     });
+
+    toggleModal('gallery-modal', true);
 }
 
-// Close Buttons
-document.getElementById('close-gallery').onclick = () => document.getElementById('gallery-modal').style.display = 'none';
+function openEditor(index) {
+    currentEditIndex = index;
+    const editorImg = document.getElementById('editor-img');
+    if (editorImg) {
+        editorImg.src = scannedDocs[index];
+        toggleModal('editor-modal', true);
+    }
+}
 
-// Start
+function deleteCurrentPage() {
+    if (confirm("Delete this page?")) {
+        scannedDocs.splice(currentEditIndex, 1);
+        toggleModal('editor-modal', false);
+        
+        // Refresh Gallery or Close it if empty
+        if (scannedDocs.length > 0) {
+            openGallery(); // Refresh grid
+            // Update main screen thumbnail
+            lastScanImg.src = scannedDocs[scannedDocs.length - 1];
+            scanCount.innerText = scannedDocs.length;
+        } else {
+            toggleModal('gallery-modal', false);
+            lastScanImg.style.display = 'none';
+            scanCount.innerText = '0';
+        }
+    }
+}
+
+// Start App
 window.onload = init;
