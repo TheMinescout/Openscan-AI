@@ -83,7 +83,7 @@ function setupTouchFocus() {
     const app = document.getElementById('app-container');
     
     app.addEventListener('click', (e) => {
-        if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+        if (e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.closest('.modal')) return;
 
         const rect = video.getBoundingClientRect();
         const scaleX = video.videoWidth / rect.width;
@@ -248,13 +248,21 @@ function setupButtons() {
     document.getElementById('capture-btn').onclick = captureImage;
     document.getElementById('done-crop').onclick = finishCrop;
     document.getElementById('cancel-crop').onclick = () => toggleModal('crop-modal', false);
+    
     document.getElementById('gallery-trigger').onclick = openGallery;
     document.getElementById('close-gallery').onclick = () => toggleModal('gallery-modal', false);
+    
     document.getElementById('close-editor').onclick = () => toggleModal('editor-modal', false);
     document.getElementById('delete-page-btn').onclick = deleteCurrentPage;
+    
     document.getElementById('settings-btn').onclick = () => toggleModal('settings-modal', true);
     document.getElementById('close-settings').onclick = () => toggleModal('settings-modal', false);
+    
     document.getElementById('export-btn').onclick = exportPDF;
+
+    // About & Donate Logic
+    document.getElementById('about-btn').onclick = () => toggleModal('about-modal', true);
+    document.getElementById('close-about').onclick = () => toggleModal('about-modal', false);
 }
 
 function toggleModal(modalId, show) {
@@ -374,32 +382,23 @@ function drawCropLines() {
     });
 }
 
-// --- 5. THE CRITICAL FIX: PERSPECTIVE WARP ---
+// PERSPECTIVE WARP
 function finishCrop() {
     toggleModal('crop-modal', false);
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
     const scale = parseFloat(container.dataset.scale);
 
-    // 1. Get exact corner coordinates (SCALED UP to Original Image Size)
     let p = Array.from(handles).map(h => ({
         x: (parseFloat(h.style.left) + 15) / scale,
         y: (parseFloat(h.style.top) + 15) / scale
     }));
 
-    // 2. Load Original Image into OpenCV
     let src = cv.imread(previewImgObj);
-    
-    // 3. Define the 4 Corners from UI
     let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-        p[0].x, p[0].y, // TL
-        p[1].x, p[1].y, // TR
-        p[2].x, p[2].y, // BR
-        p[3].x, p[3].y  // BL
+        p[0].x, p[0].y, p[1].x, p[1].y, p[2].x, p[2].y, p[3].x, p[3].y
     ]);
 
-    // 4. Define the 4 Destination Corners (Flat Rectangle)
-    // We calculate width/height based on the distances between corners to keep aspect ratio
     let widthTop = Math.hypot(p[1].x - p[0].x, p[1].y - p[0].y);
     let widthBottom = Math.hypot(p[2].x - p[3].x, p[2].y - p[3].y);
     let heightLeft = Math.hypot(p[3].x - p[0].x, p[3].y - p[0].y);
@@ -409,23 +408,17 @@ function finishCrop() {
     let maxHeight = Math.max(heightLeft, heightRight);
 
     let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-        0, 0,               // TL
-        maxWidth, 0,        // TR
-        maxWidth, maxHeight,// BR
-        0, maxHeight        // BL
+        0, 0, maxWidth, 0, maxWidth, maxHeight, 0, maxHeight
     ]);
 
-    // 5. Compute Perspective Matrix & Warp
     let M = cv.getPerspectiveTransform(srcTri, dstTri);
     let dst = new cv.Mat();
     cv.warpPerspective(src, dst, M, new cv.Size(maxWidth, maxHeight), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
 
-    // 6. Convert Result back to Canvas/Image
     let canvas = document.createElement('canvas');
     cv.imshow(canvas, dst);
     saveScan(canvas.toDataURL('image/jpeg', 0.9));
 
-    // Cleanup
     src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
 }
 
