@@ -16,6 +16,11 @@ jobs:
       - name: Build with Gradle
         run: |
           cd android-app
+          # Ensure the wrapper exists and is executable
+          if [ ! -f "gradlew" ]; then
+            echo "Error: gradlew not found in android-app/ directory. Please check your file structure."
+            exit 1
+          fi
           chmod +x gradlew
           ./gradlew assembleDebug
           
