@@ -261,11 +261,115 @@ function openGallery() {
     toggleModal('gallery-modal', true);
 }
 
+// ... (Keep your existing Start Camera, Capture, and Crop logic) ...
+
+// --- EDITOR LOGIC (NEW) ---
+
+// 1. Store the "Original" version so we can always undo filters
+let originalEditImgData = null; 
+
 function openEditor(index) {
     currentEditIndex = index;
-    document.getElementById('editor-img').src = scannedDocs[index];
+    const imgData = scannedDocs[index];
+    
+    // Set the view
+    document.getElementById('editor-img').src = imgData;
+    
+    // Save copy for "Undo" functionality
+    originalEditImgData = imgData; 
+    
     toggleModal('editor-modal', true);
 }
+
+// 2. Apply Filters (Original vs B&W)
+function applyFilter(type) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        if (type === 'bw') {
+            // Get pixel data
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+
+            // Simple "Document Scan" Filter
+            // 1. Grayscale
+            // 2. High Contrast (Threshold)
+            for (let i = 0; i < data.length; i += 4) {
+                // Average RGB
+                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                
+                // Threshold: If dark gray, make black. If light gray, make white.
+                // This cleans up shadows on paper.
+                const color = avg > 110 ? 255 : 0; 
+
+                data[i] = color;     // R
+                data[i + 1] = color; // G
+                data[i + 2] = color; // B
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // Save result
+        updateCurrentImage(canvas.toDataURL('image/jpeg', 0.9));
+    };
+    
+    // Always start from ORIGINAL to avoid frying the image
+    img.src = type === 'original' ? originalEditImgData : document.getElementById('editor-img').src;
+    
+    // If resetting to original, just load it directly
+    if(type === 'original') {
+        updateCurrentImage(originalEditImgData);
+    }
+}
+
+// 3. Rotation Logic
+function rotateImage() {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+
+    img.onload = () => {
+        // Swap Width and Height
+        canvas.width = img.height;
+        canvas.height = img.width;
+
+        // Rotate Context 90 degrees
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(90 * Math.PI / 180);
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+        // Save result
+        const rotatedData = canvas.toDataURL('image/jpeg', 0.9);
+        updateCurrentImage(rotatedData);
+        
+        // Update the "Original" reference too, so B&W filter uses the new rotation
+        originalEditImgData = rotatedData; 
+    };
+    img.src = document.getElementById('editor-img').src;
+}
+
+// Helper to save changes to array and screen
+function updateCurrentImage(newData) {
+    // 1. Update Screen
+    document.getElementById('editor-img').src = newData;
+    
+    // 2. Update Memory (So the Gallery and PDF use the new version)
+    scannedDocs[currentEditIndex] = newData;
+    
+    // 3. Update Gallery Thumbnail (Background update)
+    const galleryGrid = document.getElementById('gallery-grid');
+    if(galleryGrid.children[currentEditIndex]) {
+        galleryGrid.children[currentEditIndex].src = newData;
+    }
+}
+
+// ... (Keep deleteCurrentPage and other helpers) ...
 
 function deleteCurrentPage() {
     if (confirm("Delete this page?")) {
