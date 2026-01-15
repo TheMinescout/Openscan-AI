@@ -15,6 +15,7 @@
 
     <script async src="https://docs.opencv.org/4.x/opencv.js" type="text/javascript"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js"></script>
 </head>
 <body>
     <div id="app-container">
@@ -26,13 +27,9 @@
 
         <div class="ui-layer">
             <div class="top-nav">
-                <button id="auto-toggle" class="glass-pill">
-                    Auto: <span style="color: #00FF00;">ON</span>
-                </button>
-                
+                <button id="auto-toggle" class="glass-pill">Auto: <span style="color: #00FF00;">ON</span></button>
                 <div id="status-msg" class="status-pill">Initializing...</div>
-                
-                <button id="settings-btn" class="glass-btn" title="Settings">⚙️</button>
+                <button id="settings-btn" class="glass-btn">⚙️</button>
             </div>
 
             <div class="bottom-nav">
@@ -45,7 +42,7 @@
                     <svg class="progress-ring" width="84" height="84">
                         <circle class="progress-ring__circle" stroke="#007AFF" stroke-width="4" fill="transparent" r="38" cx="42" cy="42"/>
                     </svg>
-                    <button id="capture-btn" aria-label="Capture"></button>
+                    <button id="capture-btn"></button>
                 </div>
 
                 <button id="export-btn" class="glass-btn primary-action">PDF</button>
@@ -84,8 +81,9 @@
             </div>
             <div class="editor-view"><img id="editor-img" src=""></div>
             <div class="editor-toolbar">
-                <button class="edit-btn" onclick="applyFilter('original')"><span>🎨</span><label>Original</label></button>
+                <button class="edit-btn" onclick="applyFilter('original')"><span>🎨</span><label>Normal</label></button>
                 <button class="edit-btn" onclick="applyFilter('bw')"><span>📄</span><label>B&W</label></button>
+                <button class="edit-btn" onclick="extractText()"><span>T</span><label>OCR</label></button>
                 <button class="edit-btn" onclick="rotateImage()"><span>🔄</span><label>Rotate</label></button>
                 <button class="edit-btn destuctive" id="delete-page-btn"><span>🗑️</span><label>Delete</label></button>
             </div>
@@ -98,8 +96,17 @@
                 <div style="width: 30px;"></div>
             </div>
             <div class="settings-content" style="padding: 20px; color: white;">
-                <div class="setting-item"><label>High Res</label><input type="checkbox" checked></div>
+                <div class="setting-item">
+                    <label>Auto-Enhance</label>
+                    <input type="checkbox" checked>
+                </div>
                 <hr style="border-color: #333; margin: 15px 0;">
+                
+                <div class="setting-item" style="display:block;">
+                    <label style="display:block; margin-bottom: 8px;">PDF Security (Password)</label>
+                    <input type="password" id="pdf-password" placeholder="Optional" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #444; background: #222; color: white;">
+                </div>
+
                 <button id="about-btn" class="menu-btn" style="margin-top: 30px;">About & Donate ❤️</button>
             </div>
         </div>
@@ -107,15 +114,26 @@
         <div id="about-modal" class="modal" style="z-index: 200;">
             <div class="modal-header">
                 <button id="close-about">Close</button>
-                <span class="modal-title">About Us</span>
+                <span class="modal-title">About</span>
                 <div style="width: 30px;"></div>
             </div>
             <div class="about-content" style="padding: 30px; text-align: center; color: white;">
                 <h1>OpenScan AI</h1>
-                <p style="color: #aaa; margin-bottom: 30px;">Privacy-focused scanner.</p>
+                <p style="color: #aaa; margin-bottom: 30px;">Secure, Local, Intelligent.</p>
                 <div class="donate-section" style="background: #222; padding: 20px; border-radius: 15px;">
                     <a href="https://buymeacoffee.com/theminescout" target="_blank" class="donate-btn">☕ Buy Me a Coffee</a>
                 </div>
+            </div>
+        </div>
+
+        <div id="text-result-modal" class="modal" style="z-index: 2100; background: rgba(0,0,0,0.9);">
+            <div class="modal-header">
+                <button onclick="document.getElementById('text-result-modal').style.display='none'">Close</button>
+                <span class="modal-title">Extracted Text</span>
+                <button onclick="copyOCRText()" class="primary-text">Copy</button>
+            </div>
+            <div style="padding: 20px; height: 100%; overflow: auto;">
+                <textarea id="ocr-result-area" style="width: 100%; height: 80%; background: #222; color: white; border: none; padding: 15px; border-radius: 10px; font-size: 16px;"></textarea>
             </div>
         </div>
 
