@@ -1,4 +1,4 @@
-/* --- MATERIAL 3 VARIABLES (Dark Theme) --- */
+/* --- MATERIAL 3 DESIGN SYSTEM (Dark Theme) --- */
 :root {
     --md-sys-color-surface: #141218;
     --md-sys-color-surface-container: #211F26;
@@ -26,7 +26,7 @@ body {
 #video-feed, #overlay-canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 #overlay-canvas { z-index: 2; pointer-events: none; }
 
-/* FOCUS RING */
+/* FOCUS RING ANIMATION */
 #focus-ring { position: absolute; width: 64px; height: 64px; border: 2px solid var(--md-sys-color-primary); border-radius: 50%; transform: translate(-50%, -50%); display: none; z-index: 10; animation: pulse 1s infinite; pointer-events: none; }
 @keyframes pulse { 0% { opacity: 1; transform: translate(-50%,-50%) scale(0.8); } 100% { opacity: 0; transform: translate(-50%,-50%) scale(1.4); } }
 
@@ -35,16 +35,47 @@ body {
 .ui-layer * { pointer-events: auto; }
 
 /* TOP BAR */
-.top-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px; border-radius: 32px; background: rgba(20, 18, 24, 0.6); backdrop-filter: blur(10px); }
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 12px 16px;
+    background: transparent; 
+    pointer-events: none;
+}
+.top-bar > * { pointer-events: auto; }
 
 .icon-btn { background: none; border: none; color: var(--md-sys-color-on-surface); padding: 8px; border-radius: 50%; cursor: pointer; }
 .icon-btn:active { background: rgba(255,255,255,0.1); }
 
-.chip { display: flex; align-items: center; gap: 8px; background: var(--md-sys-color-surface-container); padding: 6px 16px; border-radius: 16px; border: 1px solid var(--md-sys-color-outline); font-size: 14px; font-weight: 500; cursor: pointer; }
-.status-pill { font-size: 12px; opacity: 0.8; }
+.chip { display: flex; align-items: center; gap: 8px; background: rgba(33, 31, 38, 0.8); backdrop-filter: blur(10px); padding: 6px 16px; border-radius: 16px; border: 1px solid var(--md-sys-color-outline); font-size: 14px; font-weight: 500; cursor: pointer; }
 
-/* BOTTOM BAR */
-.bottom-bar { display: flex; justify-content: space-around; align-items: center; padding-bottom: 24px; }
+.status-pill {
+    background: rgba(33, 31, 38, 0.8);
+    backdrop-filter: blur(10px);
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface);
+    border: 1px solid var(--md-sys-color-outline);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* BOTTOM BAR GRID LAYOUT */
+.bottom-bar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    width: 100%;
+    padding: 0 32px 48px;
+    background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+}
+.bottom-bar > :first-child { justify-self: start; }
+.bottom-bar > :nth-child(2) { justify-self: center; }
+.bottom-bar > :last-child { justify-self: end; }
 
 .thumbnail-btn { width: 56px; height: 56px; border-radius: 16px; background: var(--md-sys-color-surface-container); overflow: hidden; position: relative; border: 1px solid var(--md-sys-color-outline); }
 .thumbnail-btn img { width: 100%; height: 100%; object-fit: cover; }
@@ -74,7 +105,7 @@ body {
 
 /* CROP UI */
 .crop-area { flex: 1; display: flex; align-items: center; justify-content: center; background: #000; padding: 20px; }
-.crop-container { position: relative; box-shadow: 0 0 0 9999px rgba(0,0,0,0.7); } /* Darken outside */
+.crop-container { position: relative; box-shadow: 0 0 0 9999px rgba(0,0,0,0.7); } 
 #crop-canvas { display: block; width: 100%; height: 100%; }
 .crop-handle { position: absolute; width: 24px; height: 24px; background: var(--md-sys-color-primary); border: 3px solid white; border-radius: 50%; transform: translate(-50%, -50%); z-index: 10; }
 
@@ -92,6 +123,7 @@ body {
 .btn-tonal { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; border-radius: 12px; background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface); border: none; margin-bottom: 10px; font-size: 14px; cursor: pointer; }
 
 .m3-select, .m3-input, .m3-textarea { width: 100%; background: var(--md-sys-color-surface); border: 1px solid var(--md-sys-color-outline); color: white; padding: 12px; border-radius: 8px; font-size: 16px; font-family: inherit; margin-top: 8px; }
+.m3-textarea { height: 100%; resize: none; border: none; background: transparent; }
 .list-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .list-text { display: flex; flex-direction: column; }
 .list-title { font-size: 16px; }
