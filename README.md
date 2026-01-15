@@ -78,4 +78,4 @@ This project is open-source and free to use. If you find it useful for your stud
 
 ---
 
-**License:** MIT
+**License:** Apache-2.0
