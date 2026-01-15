@@ -6,10 +6,13 @@
     <title>OpenScan-AI Pro</title>
     
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#007AFF">
+    <meta name="theme-color" content="#141218">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="assets/icon-192.png">
+
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
 
     <link rel="stylesheet" href="css/style.css">
 
@@ -20,170 +23,193 @@
 <body>
     <div id="app-container">
         <video id="video-feed" autoplay playsinline muted></video>
-        
         <canvas id="overlay-canvas"></canvas>
-
         <div id="focus-ring"></div>
 
         <div class="ui-layer">
-            <div class="top-nav">
-                <button id="auto-toggle" class="glass-pill">Auto: <span style="color: #00FF00;">ON</span></button>
-                <div id="status-msg" class="status-pill">Initializing...</div>
-                <button id="settings-btn" class="glass-btn">⚙️</button>
+            <div class="top-bar">
+                <button id="settings-btn" class="icon-btn material-symbols-outlined">settings</button>
+                <div id="auto-toggle" class="chip">
+                    <span class="material-symbols-outlined">shutter_speed</span>
+                    <span id="auto-text">Auto</span>
+                </div>
+                <div id="status-msg" class="status-pill">Ready</div>
             </div>
 
-            <div class="bottom-nav">
-                <div id="gallery-trigger" class="preview-box">
+            <div class="bottom-bar">
+                <div id="gallery-trigger" class="thumbnail-btn">
                     <img id="last-scan-img" src="" style="display:none;">
-                    <div id="scan-count">0</div>
+                    <span id="scan-count" class="badge">0</span>
                 </div>
 
-                <div class="shutter-outer">
-                    <svg class="progress-ring" width="84" height="84">
-                        <circle class="progress-ring__circle" stroke="#007AFF" stroke-width="4" fill="transparent" r="38" cx="42" cy="42"/>
+                <div class="shutter-container">
+                    <svg class="progress-ring" width="88" height="88">
+                        <circle class="progress-ring__circle" stroke="#D0BCFF" stroke-width="4" fill="transparent" r="40" cx="44" cy="44"/>
                     </svg>
                     <button id="capture-btn"></button>
                 </div>
 
-                <button id="export-btn" class="glass-btn primary-action">PDF</button>
+                <button id="export-btn" class="fab-small">
+                    <span class="material-symbols-outlined">picture_as_pdf</span>
+                </button>
             </div>
         </div>
 
         <div id="freeze-layer"></div>
 
-        <div id="crop-modal" class="modal">
-            <div class="modal-header">
-                <button id="cancel-crop">Retake</button>
-                <span class="modal-title">Adjust Corners</span>
-                <button id="done-crop" class="primary-text">Keep</button>
+        <div id="crop-modal" class="modal-sheet">
+            <div class="sheet-header">
+                <button id="cancel-crop" class="text-btn">Retake</button>
+                <span class="sheet-title">Adjust Corners</span>
+                <button id="done-crop" class="text-btn primary">Keep</button>
             </div>
-            <div class="crop-container" id="crop-ui-container">
-                <canvas id="crop-canvas"></canvas>
-                <div class="crop-handle"></div><div class="crop-handle"></div>
-                <div class="crop-handle"></div><div class="crop-handle"></div>
+            <div class="crop-area">
+                <div class="crop-container" id="crop-ui-container">
+                    <canvas id="crop-canvas"></canvas>
+                    <div class="crop-handle"></div><div class="crop-handle"></div>
+                    <div class="crop-handle"></div><div class="crop-handle"></div>
+                </div>
             </div>
         </div>
 
-        <div id="gallery-modal" class="modal">
-            <div class="modal-header">
-                <button id="close-gallery">← Back</button>
-                <span class="modal-title">Scanned Pages</span>
-                <div style="width: 30px;"></div>
+        <div id="gallery-modal" class="modal-sheet full-height">
+            <div class="sheet-header">
+                <button id="close-gallery" class="icon-btn material-symbols-outlined">arrow_back</button>
+                <span class="sheet-title">Scans</span>
+                <div style="width: 48px;"></div>
             </div>
             <div id="gallery-grid" class="gallery-grid"></div>
         </div>
 
-        <div id="editor-modal" class="modal" style="background: #111;">
-            <div class="modal-header">
-                <button id="close-editor">Done</button>
-                <span class="modal-title">Edit Page</span>
-                <div style="width: 30px;"></div>
+        <div id="editor-modal" class="modal-sheet full-height">
+            <div class="sheet-header">
+                <button id="close-editor" class="icon-btn material-symbols-outlined">arrow_back</button>
+                <span class="sheet-title">Edit</span>
+                <button id="delete-page-btn" class="icon-btn material-symbols-outlined" style="color: #FFB4AB;">delete</button>
             </div>
-            <div class="editor-view"><img id="editor-img" src=""></div>
-            <div class="editor-toolbar">
-                <button class="edit-btn" onclick="applyFilter('original')"><span>🎨</span><label>Normal</label></button>
-                <button class="edit-btn" onclick="applyFilter('bw')"><span>📄</span><label>B&W</label></button>
-                <button class="edit-btn" onclick="extractText()"><span>T</span><label>OCR</label></button>
-                <button class="edit-btn" onclick="rotateImage()"><span>🔄</span><label>Rotate</label></button>
-                <button class="edit-btn destuctive" id="delete-page-btn"><span>🗑️</span><label>Delete</label></button>
+            
+            <div class="editor-view">
+                <img id="editor-img" src="">
+            </div>
+
+            <div class="editor-actions">
+                <button class="action-item" onclick="applyFilter('original')">
+                    <span class="material-symbols-outlined">palette</span>
+                    <label>Original</label>
+                </button>
+                <button class="action-item" onclick="applyFilter('magic')">
+                    <span class="material-symbols-outlined">auto_fix_high</span>
+                    <label>Magic Fix</label>
+                </button>
+                <button class="action-item" onclick="applyFilter('bw')">
+                    <span class="material-symbols-outlined">description</span>
+                    <label>B&W</label>
+                </button>
+                <button class="action-item" onclick="extractText()">
+                    <span class="material-symbols-outlined">text_snippet</span>
+                    <label>Extract</label>
+                </button>
+                <button class="action-item" onclick="rotateImage()">
+                    <span class="material-symbols-outlined">rotate_right</span>
+                    <label>Rotate</label>
+                </button>
             </div>
         </div>
 
-        <div id="settings-modal" class="modal">
-            <div class="modal-header">
-                <button id="close-settings">Done</button>
-                <span class="modal-title">Settings</span>
-                <div style="width: 30px;"></div>
-            </div>
-            <div class="settings-content" style="padding: 20px; color: white;">
+        <div id="settings-modal" class="modal-sheet">
+            <div class="sheet-drag-handle"></div>
+            <div class="sheet-content">
+                <h2>Settings</h2>
                 
-                <div class="setting-item">
-                    <label>Scan Quality</label>
-                    <select id="quality-select" style="background: #333; color: white; border: none; padding: 8px; border-radius: 8px; font-size: 14px;">
-                        <option value="4k">4K (Ultra HD)</option>
-                        <option value="1080p" selected>1080p (Full HD)</option>
-                        <option value="720p">720p (Fast)</option>
+                <div class="list-item">
+                    <div class="list-text">
+                        <span class="list-title">Scan Quality</span>
+                        <span class="list-subtitle">Higher quality = slower processing</span>
+                    </div>
+                    <select id="quality-select" class="m3-select">
+                        <option value="4k">4K (Ultra)</option>
+                        <option value="1080p" selected>1080p</option>
+                        <option value="720p">720p</option>
                     </select>
                 </div>
-                <hr style="border-color: #333; margin: 15px 0;">
 
-                <div class="setting-item">
-                    <label>Auto-Enhance</label>
-                    <input type="checkbox" checked>
+                <div class="list-item">
+                    <div class="list-text">
+                        <span class="list-title">Auto-Enhance</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" checked>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+
+                <div class="input-group">
+                    <label>PDF Password (Optional)</label>
+                    <input type="password" id="pdf-password" class="m3-input" placeholder="Enter password">
+                </div>
+
+                <div class="btn-group">
+                    <button id="tutorial-btn" class="btn-tonal">
+                        <span class="material-symbols-outlined">menu_book</span>
+                        How to Use
+                    </button>
+                    <button id="about-btn" class="btn-tonal">
+                        <span class="material-symbols-outlined">info</span>
+                        About & Donate
+                    </button>
                 </div>
                 
-                <div class="setting-item" style="display:block; margin-top: 15px;">
-                    <label style="display:block; margin-bottom: 8px;">PDF Security (Password)</label>
-                    <input type="password" id="pdf-password" placeholder="Optional" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #444; background: #222; color: white;">
-                </div>
-
-                <button id="tutorial-btn" class="menu-btn" style="margin-top: 30px; background: #444;">How to Use 📚</button>
-
-                <button id="about-btn" class="menu-btn" style="margin-top: 15px;">About & Donate ❤️</button>
+                <button id="close-settings" class="btn-filled" style="width:100%; margin-top:10px;">Done</button>
             </div>
         </div>
 
-        <div id="tutorial-modal" class="modal" style="z-index: 200;">
-            <div class="modal-header">
-                <button id="close-tutorial">Close</button>
-                <span class="modal-title">How to Use</span>
-                <div style="width: 30px;"></div>
+        <div id="tutorial-modal" class="modal-sheet full-height">
+            <div class="sheet-header">
+                <button id="close-tutorial" class="icon-btn material-symbols-outlined">close</button>
+                <span class="sheet-title">Guide</span>
+                <div style="width: 48px;"></div>
             </div>
-            <div class="about-content" style="padding: 25px; color: white; overflow-y: auto; text-align: left;">
-                <h2 style="margin-bottom: 15px; color: var(--primary);">Quick Start Guide</h2>
+            <div class="sheet-content scrollable">
+                <div class="card">
+                    <h3>1. Scan</h3>
+                    <p>Point at a document. The <span style="color:#D0BCFF">Blue Box</span> means it's detected. Hold still for the ring to fill.</p>
+                </div>
+                <div class="card">
+                    <h3>2. Magic Fix</h3>
+                    <p>Use the <b>Magic Fix</b> filter in the editor to flatten shadows and boost contrast automatically.</p>
+                </div>
+                <div class="card">
+                    <h3>3. Export</h3>
+                    <p>Tap the PDF button to share or save your documents.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="about-modal" class="modal-sheet">
+            <div class="sheet-drag-handle"></div>
+            <div class="sheet-content center-text">
+                <h2>OpenScan AI</h2>
+                <p>Private. Local. Intelligent.</p>
                 
-                <div class="tutorial-step" style="margin-bottom: 20px;">
-                    <h3 style="font-size: 16px; margin-bottom: 5px;">1. Point & Align 🟦</h3>
-                    <p style="color: #ccc; font-size: 14px;">Point camera at your document. The AI will find the edges and draw a <span style="color: #007AFF;">Blue Box</span> when locked on.</p>
-                </div>
-
-                <div class="tutorial-step" style="margin-bottom: 20px;">
-                    <h3 style="font-size: 16px; margin-bottom: 5px;">2. Auto-Capture 📸</h3>
-                    <p style="color: #ccc; font-size: 14px;">Hold steady! The shutter ring will fill up. Once full, it captures automatically. Or tap the button to snap manually.</p>
-                </div>
-
-                <div class="tutorial-step" style="margin-bottom: 20px;">
-                    <h3 style="font-size: 16px; margin-bottom: 5px;">3. Edit & Filter 🎨</h3>
-                    <p style="color: #ccc; font-size: 14px;">Tap the gallery preview. Use <b>B&W</b> for clear text, <b>Rotate</b> to fix orientation, or <b>OCR</b> to copy text.</p>
-                </div>
-
-                <div class="tutorial-step" style="margin-bottom: 25px;">
-                    <h3 style="font-size: 16px; margin-bottom: 5px;">4. Export PDF 📄</h3>
-                    <p style="color: #ccc; font-size: 14px;">Tap the <b>PDF</b> button to combine all scans into one file. You can set a password in Settings.</p>
-                </div>
-
-                <div style="background: #222; padding: 15px; border-radius: 12px; text-align: center;">
-                    <p style="font-size: 13px; margin-bottom: 10px;">Need more details or want to contribute?</p>
-                    <a href="https://github.com/TheMinescout/OpenScan-AI" target="_blank" style="color: var(--primary); text-decoration: none; font-weight: bold; font-size: 15px;">
-                        View on GitHub ↗
+                <div class="donate-card">
+                    <p>Support development:</p>
+                    <a href="https://buymeacoffee.com/theminescout" target="_blank" class="btn-filled gold">
+                        ☕ Buy Me a Coffee
                     </a>
                 </div>
+                
+                <button id="close-about" class="text-btn" style="margin-top: 20px;">Close</button>
             </div>
         </div>
 
-        <div id="about-modal" class="modal" style="z-index: 200;">
-            <div class="modal-header">
-                <button id="close-about">Close</button>
-                <span class="modal-title">About</span>
-                <div style="width: 30px;"></div>
+        <div id="text-result-modal" class="modal-sheet full-height">
+            <div class="sheet-header">
+                <button onclick="document.getElementById('text-result-modal').style.display='none'" class="icon-btn material-symbols-outlined">close</button>
+                <span class="sheet-title">Text</span>
+                <button onclick="copyOCRText()" class="text-btn primary">Copy</button>
             </div>
-            <div class="about-content" style="padding: 30px; text-align: center; color: white;">
-                <h1>OpenScan AI</h1>
-                <p style="color: #aaa; margin-bottom: 30px;">Secure, Local, Intelligent.</p>
-                <div class="donate-section" style="background: #222; padding: 20px; border-radius: 15px;">
-                    <a href="https://buymeacoffee.com/theminescout" target="_blank" class="donate-btn">☕ Buy Me a Coffee</a>
-                </div>
-            </div>
-        </div>
-
-        <div id="text-result-modal" class="modal" style="z-index: 2100; background: rgba(0,0,0,0.9);">
-            <div class="modal-header">
-                <button onclick="document.getElementById('text-result-modal').style.display='none'">Close</button>
-                <span class="modal-title">Extracted Text</span>
-                <button onclick="copyOCRText()" class="primary-text">Copy</button>
-            </div>
-            <div style="padding: 20px; height: 100%; overflow: auto;">
-                <textarea id="ocr-result-area" style="width: 100%; height: 80%; background: #222; color: white; border: none; padding: 15px; border-radius: 10px; font-size: 16px;"></textarea>
+            <div class="sheet-content full-height">
+                <textarea id="ocr-result-area" class="m3-textarea"></textarea>
             </div>
         </div>
 
