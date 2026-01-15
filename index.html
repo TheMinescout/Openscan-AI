@@ -117,7 +117,47 @@
                     <input type="password" id="pdf-password" placeholder="Optional" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #444; background: #222; color: white;">
                 </div>
 
-                <button id="about-btn" class="menu-btn" style="margin-top: 30px;">About & Donate ❤️</button>
+                <button id="tutorial-btn" class="menu-btn" style="margin-top: 30px; background: #444;">How to Use 📚</button>
+
+                <button id="about-btn" class="menu-btn" style="margin-top: 15px;">About & Donate ❤️</button>
+            </div>
+        </div>
+
+        <div id="tutorial-modal" class="modal" style="z-index: 200;">
+            <div class="modal-header">
+                <button id="close-tutorial">Close</button>
+                <span class="modal-title">How to Use</span>
+                <div style="width: 30px;"></div>
+            </div>
+            <div class="about-content" style="padding: 25px; color: white; overflow-y: auto; text-align: left;">
+                <h2 style="margin-bottom: 15px; color: var(--primary);">Quick Start Guide</h2>
+                
+                <div class="tutorial-step" style="margin-bottom: 20px;">
+                    <h3 style="font-size: 16px; margin-bottom: 5px;">1. Point & Align 🟦</h3>
+                    <p style="color: #ccc; font-size: 14px;">Point camera at your document. The AI will find the edges and draw a <span style="color: #007AFF;">Blue Box</span> when locked on.</p>
+                </div>
+
+                <div class="tutorial-step" style="margin-bottom: 20px;">
+                    <h3 style="font-size: 16px; margin-bottom: 5px;">2. Auto-Capture 📸</h3>
+                    <p style="color: #ccc; font-size: 14px;">Hold steady! The shutter ring will fill up. Once full, it captures automatically. Or tap the button to snap manually.</p>
+                </div>
+
+                <div class="tutorial-step" style="margin-bottom: 20px;">
+                    <h3 style="font-size: 16px; margin-bottom: 5px;">3. Edit & Filter 🎨</h3>
+                    <p style="color: #ccc; font-size: 14px;">Tap the gallery preview. Use <b>B&W</b> for clear text, <b>Rotate</b> to fix orientation, or <b>OCR</b> to copy text.</p>
+                </div>
+
+                <div class="tutorial-step" style="margin-bottom: 25px;">
+                    <h3 style="font-size: 16px; margin-bottom: 5px;">4. Export PDF 📄</h3>
+                    <p style="color: #ccc; font-size: 14px;">Tap the <b>PDF</b> button to combine all scans into one file. You can set a password in Settings.</p>
+                </div>
+
+                <div style="background: #222; padding: 15px; border-radius: 12px; text-align: center;">
+                    <p style="font-size: 13px; margin-bottom: 10px;">Need more details or want to contribute?</p>
+                    <a href="https://github.com/TheMinescout/OpenScan-AI" target="_blank" style="color: var(--primary); text-decoration: none; font-weight: bold; font-size: 15px;">
+                        View on GitHub ↗
+                    </a>
+                </div>
             </div>
         </div>
 
