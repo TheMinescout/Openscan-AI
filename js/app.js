@@ -5,8 +5,8 @@ let currentEditIndex = -1;
 let detectedQuad = null; 
 let isCVReady = false;
 let isAutoCaptureOn = true;
+let stabilityThreshold = 20; // Default (Normal)
 let stabilityCounter = 0;
-const STABILITY_THRESHOLD = 20;
 let isProcessing = false;
 let focusPoint = null;
 let focusTimer = null;
@@ -22,18 +22,19 @@ const lastScanImg = document.getElementById('last-scan-img');
 const focusRing = document.getElementById('focus-ring');
 const progressCircle = document.querySelector('.progress-ring__circle');
 const qualitySelect = document.getElementById('quality-select');
+const autoSpeedSelect = document.getElementById('auto-speed');
 
 // --- INIT ---
 document.addEventListener('DOMContentLoaded', () => {
     setupButtons();
     setupTouchFocus();
     
-    // Security Check: Camera won't work on HTTP unless localhost
+    // Security Check
     if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
         alert("Camera requires HTTPS. Please run on a secure server or localhost.");
     }
 
-    startCamera(); // Try default resolution
+    startCamera(); 
     
     if(progressCircle) progressCircle.style.strokeDashoffset = 251; 
 
@@ -55,17 +56,16 @@ function onOpenCVReady() {
     isCVReady = true;
     console.log("OpenCV Ready");
     statusMsg.innerText = "Ready";
-    statusMsg.style.background = "rgba(0, 200, 0, 0.6)";
+    statusMsg.style.background = "rgba(30, 28, 34, 0.85)";
     requestAnimationFrame(processVideoFrame);
 }
 
-// --- ROBUST CAMERA LOGIC ---
+// --- CAMERA LOGIC ---
 async function startCamera(overrideWidth = null) {
     const quality = qualitySelect.value;
     let width = overrideWidth || 1920; 
     let height = (width === 3840) ? 2160 : (width === 1280 ? 720 : 1080);
     
-    // Manual Quality Override
     if (!overrideWidth) {
         if (quality === '4k') { width = 3840; height = 2160; }
         else if (quality === '720p') { width = 1280; height = 720; }
@@ -91,7 +91,6 @@ async function startCamera(overrideWidth = null) {
         currentStream = stream;
         video.srcObject = stream;
         
-        // Wait for video to actually play
         video.onloadedmetadata = () => {
             video.play().then(() => {
                 resizeCanvas();
@@ -99,16 +98,12 @@ async function startCamera(overrideWidth = null) {
                 statusMsg.innerText = "Ready";
                 statusMsg.style.background = "rgba(30, 28, 34, 0.85)";
             }).catch(e => {
-                console.error("Play error:", e);
                 statusMsg.innerText = "Play Error";
                 statusMsg.style.background = "rgba(255, 0, 0, 0.6)";
             });
         };
     } catch (e) {
-        console.error("Camera Error:", e);
-        // FALLBACK: If 4K failed, try 1080p. If 1080p failed, try any camera.
         if (width > 1280) {
-            console.log("Downgrading resolution...");
             startCamera(1280);
         } else {
             statusMsg.innerText = "Permission Denied";
@@ -201,10 +196,12 @@ function processVideoFrame() {
             if (isAutoCaptureOn) {
                 stabilityCounter++;
                 statusMsg.innerText = "Steady...";
-                let progress = stabilityCounter / STABILITY_THRESHOLD;
+                
+                // Dynamic Threshold Logic
+                let progress = stabilityCounter / stabilityThreshold;
                 progressCircle.style.strokeDashoffset = 251 - (251 * progress);
 
-                if (stabilityCounter >= STABILITY_THRESHOLD) {
+                if (stabilityCounter >= stabilityThreshold) {
                     statusMsg.innerText = "Capturing!";
                     captureImage(); 
                     stabilityCounter = 0; 
@@ -242,6 +239,11 @@ function setupButtons() {
         document.getElementById('auto-text').innerText = isAutoCaptureOn ? "Auto" : "Manual";
         document.getElementById('auto-toggle').style.opacity = isAutoCaptureOn ? "1" : "0.5";
         progressCircle.style.strokeDashoffset = 251;
+    };
+
+    // Auto Speed Listener
+    autoSpeedSelect.onchange = () => {
+        stabilityThreshold = parseInt(autoSpeedSelect.value);
     };
 
     document.getElementById('capture-btn').onclick = captureImage;
