@@ -144,10 +144,13 @@ input:checked + .slider:before { transform: translateX(20px); background-color: 
     display: grid; 
     grid-template-columns: repeat(3, 1fr); 
     gap: 8px; 
-    overflow-y: auto; /* Allows scrolling */
-    flex: 1;          /* Forces it to fill the screen */
-    align-content: start; /* Keeps images at the top */
+    
+    /* ADD THESE LINES TO FIX INVISIBLE GALLERY */
+    overflow-y: auto; 
+    flex: 1;          
+    align-content: start;
 }
+
 .gallery-grid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 12px; }
 .card { background: var(--md-sys-color-surface-container); padding: 16px; border-radius: 16px; margin-bottom: 16px; }
 .center-text { text-align: center; }
