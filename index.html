@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>OpenScan-AI Pro</title>
-    
-    <script>console.log("✅ index.html v4.0 (Editor Suite) loaded");</script>
+    <script>console.log("✅ index.html v5.0 (Circle-to-Scan) loaded");</script>
 
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#141218">
@@ -27,7 +26,7 @@
         
         <canvas id="overlay-canvas"></canvas>
 
-        <div id="focus-ring"></div>
+        <canvas id="gesture-canvas"></canvas>
 
         <div class="ui-layer">
             <div class="top-bar">
@@ -38,7 +37,7 @@
                         <span id="auto-text">Auto</span>
                     </div>
                 </div>
-                <div class="bar-right"><div id="status-msg" class="status-pill">Ready</div></div>
+                <div class="bar-right"><div id="status-msg" class="status-pill">Draw to Scan</div></div>
             </div>
 
             <div class="bottom-bar">
@@ -69,9 +68,9 @@
 
         <div id="crop-modal" class="modal-sheet">
             <div class="sheet-header">
-                <button id="cancel-crop" class="text-btn">Cancel</button>
+                <button id="cancel-crop" class="text-btn">Retake</button>
                 <span class="sheet-title">Adjust</span>
-                <button id="done-crop" class="text-btn primary">Done</button>
+                <button id="done-crop" class="text-btn primary">Keep</button>
             </div>
             <div class="crop-area">
                 <div class="crop-container" id="crop-ui-container">
@@ -95,86 +94,40 @@
             <div class="sheet-header">
                 <button id="close-editor" class="icon-btn material-symbols-outlined">arrow_back</button>
                 <span class="sheet-title">Editor</span>
-                <button id="save-editor" class="text-btn primary" style="font-weight:bold;">Save</button>
+                <button id="save-editor" class="text-btn primary">Save</button>
             </div>
-            
-            <div class="editor-view">
-                <img id="editor-img" src="">
-            </div>
-
+            <div class="editor-view"><img id="editor-img" src=""></div>
             <div class="editor-suite">
                 <div class="scroll-toolbar">
                     <button class="tool-btn" onclick="performRetake()">
-                        <span class="material-symbols-outlined icon-box">camera_alt</span>
-                        <label>Retake</label>
+                        <span class="material-symbols-outlined icon-box">camera_alt</span><label>Retake</label>
                     </button>
                     <button class="tool-btn" onclick="startReCrop()">
-                        <span class="material-symbols-outlined icon-box">crop</span>
-                        <label>Re-Crop</label>
+                        <span class="material-symbols-outlined icon-box">crop</span><label>Re-Crop</label>
                     </button>
-                    
                     <div class="divider"></div>
-
                     <button class="tool-btn" onclick="applyFilter('magic')">
-                        <span class="material-symbols-outlined icon-box" style="color:#D0BCFF;">auto_fix_high</span>
-                        <label>Magic</label>
+                        <span class="material-symbols-outlined icon-box" style="color:#D0BCFF;">auto_fix_high</span><label>Magic</label>
                     </button>
                     <button class="tool-btn" onclick="applyFilter('bw')">
-                        <span class="material-symbols-outlined icon-box">contrast</span>
-                        <label>B&W</label>
-                    </button>
-                    <button class="tool-btn" onclick="applyFilter('gray')">
-                        <span class="material-symbols-outlined icon-box">filter_b_and_w</span>
-                        <label>Gray</label>
+                        <span class="material-symbols-outlined icon-box">contrast</span><label>B&W</label>
                     </button>
                     <button class="tool-btn" onclick="applyFilter('original')">
-                        <span class="material-symbols-outlined icon-box">restart_alt</span>
-                        <label>Reset</label>
+                        <span class="material-symbols-outlined icon-box">restart_alt</span><label>Reset</label>
                     </button>
-
                     <div class="divider"></div>
-
-                    <button class="tool-btn" onclick="applyFilter('lighten')">
-                        <span class="material-symbols-outlined icon-box">light_mode</span>
-                        <label>Lighten</label>
-                    </button>
-                    <button class="tool-btn" onclick="applyFilter('darken')">
-                        <span class="material-symbols-outlined icon-box">dark_mode</span>
-                        <label>Darken</label>
-                    </button>
-                    <button class="tool-btn" onclick="applyFilter('sharpen')">
-                        <span class="material-symbols-outlined icon-box">hdr_strong</span>
-                        <label>Sharpen</label>
-                    </button>
-                    <button class="tool-btn" onclick="applyFilter('invert')">
-                        <span class="material-symbols-outlined icon-box">invert_colors</span>
-                        <label>Invert</label>
-                    </button>
-
-                    <div class="divider"></div>
-
                     <button class="tool-btn" onclick="rotateImage(-90)">
-                        <span class="material-symbols-outlined icon-box">rotate_left</span>
-                        <label>Left</label>
+                        <span class="material-symbols-outlined icon-box">rotate_left</span><label>Left</label>
                     </button>
                     <button class="tool-btn" onclick="rotateImage(90)">
-                        <span class="material-symbols-outlined icon-box">rotate_right</span>
-                        <label>Right</label>
+                        <span class="material-symbols-outlined icon-box">rotate_right</span><label>Right</label>
                     </button>
-                    <button class="tool-btn" onclick="flipImage()">
-                        <span class="material-symbols-outlined icon-box">flip</span>
-                        <label>Mirror</label>
-                    </button>
-
                     <div class="divider"></div>
-
                     <button class="tool-btn" onclick="extractText()">
-                        <span class="material-symbols-outlined icon-box">text_snippet</span>
-                        <label>OCR</label>
+                        <span class="material-symbols-outlined icon-box">text_snippet</span><label>OCR</label>
                     </button>
                     <button class="tool-btn destuctive" onclick="deleteCurrentPage()">
-                        <span class="material-symbols-outlined icon-box" style="background:#3b1f1f; color:#ffb4ab;">delete</span>
-                        <label>Delete</label>
+                        <span class="material-symbols-outlined icon-box" style="background:#3b1f1f; color:#ffb4ab;">delete</span><label>Delete</label>
                     </button>
                 </div>
             </div>
@@ -200,17 +153,9 @@
                         <option value="45">Slow</option>
                     </select>
                 </div>
-                <div class="list-item">
-                    <div class="list-text"><span class="list-title">Auto-Enhance</span></div>
-                    <label class="switch"><input type="checkbox" checked><span class="slider round"></span></label>
-                </div>
-                <div class="input-group">
-                    <label>PDF Password</label>
-                    <input type="password" id="pdf-password" class="m3-input" placeholder="Optional...">
-                </div>
                 <div class="btn-group" style="margin-top: 20px;">
-                    <button id="tutorial-btn" class="btn-tonal"><span class="material-symbols-outlined">menu_book</span>Guide</button>
-                    <button id="about-btn" class="btn-tonal"><span class="material-symbols-outlined">info</span>About</button>
+                    <button id="tutorial-btn" class="btn-tonal">Guide</button>
+                    <button id="about-btn" class="btn-tonal">About</button>
                 </div>
                 <button id="close-settings" class="btn-filled" style="margin-top:10px;">Done</button>
             </div>
@@ -219,20 +164,20 @@
         <div id="tutorial-modal" class="modal-sheet full-height">
             <div class="sheet-header"><button id="close-tutorial" class="icon-btn material-symbols-outlined">close</button><span class="sheet-title">Guide</span><div style="width:48px;"></div></div>
             <div class="sheet-content scrollable">
-                <div class="card"><h3>1. Scan</h3><p>Align document in the blue box.</p></div>
-                <div class="card"><h3>2. Edit Suite</h3><p>Use Magic Fix, Re-Crop, or Filters.</p></div>
-                <div class="card"><h3>3. Export</h3><p>Save as PDF or share images.</p></div>
+                <div class="card"><h3>1. Circle to Scan</h3><p>Draw a circle around the document to help the AI find it.</p></div>
+                <div class="card"><h3>2. Manual Capture</h3><p>Tap the shutter anytime. The AI will still try to find corners on the photo.</p></div>
             </div>
         </div>
+
         <div id="about-modal" class="modal-sheet">
             <div class="sheet-drag-handle"></div>
-            <div class="sheet-content center-text"><h2>OpenScan AI</h2><div class="donate-card" style="background:#211F26;padding:20px;border-radius:16px;margin-top:20px;"><a href="https://buymeacoffee.com/theminescout" target="_blank" class="btn-filled gold">☕ Support Dev</a></div><button id="close-about" class="text-btn" style="margin-top:20px;">Close</button></div>
+            <div class="sheet-content center-text"><h2>OpenScan AI</h2><button id="close-about" class="text-btn" style="margin-top:20px;">Close</button></div>
         </div>
+
         <div id="text-result-modal" class="modal-sheet full-height">
             <div class="sheet-header"><button onclick="document.getElementById('text-result-modal').style.display='none'" class="icon-btn material-symbols-outlined">close</button><span class="sheet-title">Text</span><button onclick="copyOCRText()" class="text-btn primary">Copy</button></div>
             <div class="sheet-content full-height"><textarea id="ocr-result-area" class="m3-textarea"></textarea></div>
         </div>
-
     </div>
     <canvas id="hidden-canvas" style="display:none;"></canvas>
     <script src="js/app.js"></script>
