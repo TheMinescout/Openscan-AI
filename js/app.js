@@ -1,4 +1,4 @@
-console.log("✅ app.js v3.2 running");
+console.log("✅ app.js v3.1 running");
 
 // --- STATE MANAGEMENT ---
 let scannedDocs = [];
@@ -77,7 +77,7 @@ async function startCamera(overrideWidth = null) {
         currentStream.getTracks().forEach(track => track.stop());
     }
 
-    statusMsg.innerText = "Starting Camera...";
+    statusMsg.innerText = "Starting...";
     statusMsg.style.background = "rgba(0,0,0,0.5)";
 
     try {
@@ -252,7 +252,7 @@ function setupButtons() {
     qualitySelect.onchange = () => startCamera();
 
     document.getElementById('capture-btn').onclick = captureImage;
-    document.getElementById('gallery-trigger').onclick = () => openSheet('gallery-modal');
+    document.getElementById('gallery-trigger').onclick = openGallery;
     document.getElementById('close-gallery').onclick = () => closeSheet('gallery-modal');
     
     document.getElementById('settings-btn').onclick = () => openSheet('settings-modal');
@@ -377,7 +377,6 @@ function drawCropLines() {
     ctx.fillStyle = 'white'; p.forEach(point => { ctx.beginPath(); ctx.arc(point.x, point.y, 6, 0, Math.PI * 2); ctx.fill(); });
 }
 
-// --- KEY FIX: Use DOM Canvas instead of detached ---
 function finishCrop() {
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
@@ -399,12 +398,9 @@ function finishCrop() {
     let dst = new cv.Mat();
     cv.warpPerspective(src, dst, M, new cv.Size(maxWidth, maxHeight), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
 
-    // FIX: Use the existing hidden canvas to ensure DOM attachment
-    let canvas = document.getElementById('hidden-canvas');
-    canvas.width = maxWidth;
-    canvas.height = maxHeight;
-    
+    let canvas = document.createElement('canvas');
     cv.imshow(canvas, dst);
+    
     saveScan(canvas.toDataURL('image/jpeg', 0.9));
 
     src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
@@ -471,6 +467,8 @@ function updateCurrentImage(newData) {
     document.getElementById('editor-img').src = newData;
     scannedDocs[currentEditIndex] = newData;
 }
+
+// GALLERY LOGIC (FIXED)
 function openGallery() {
     const grid = document.getElementById('gallery-grid');
     grid.innerHTML = ''; // Clear previous
@@ -497,6 +495,7 @@ function openGallery() {
     }
     openSheet('gallery-modal');
 }
+
 function rotateImage() {
     const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); const img = new Image();
     img.onload = () => {
