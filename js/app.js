@@ -1,4 +1,4 @@
-console.log("✅ app.js v3.1 (Canvas Fix) running");
+console.log("✅ app.js v3.2 running");
 
 // --- STATE MANAGEMENT ---
 let scannedDocs = [];
@@ -472,11 +472,29 @@ function updateCurrentImage(newData) {
     scannedDocs[currentEditIndex] = newData;
 }
 function openGallery() {
-    const grid = document.getElementById('gallery-grid'); grid.innerHTML = '';
-    scannedDocs.forEach((doc, index) => {
-        const img = document.createElement('img'); img.src = doc; img.onclick = () => { currentEditIndex = index; document.getElementById('editor-img').src = doc; openSheet('editor-modal'); };
-        grid.appendChild(img);
-    });
+    const grid = document.getElementById('gallery-grid');
+    grid.innerHTML = ''; // Clear previous
+
+    if (scannedDocs.length === 0) {
+        // Show "No Scans" message
+        grid.style.display = 'flex';
+        grid.style.alignItems = 'center';
+        grid.style.justifyContent = 'center';
+        grid.innerHTML = '<p style="color: #666;">No scans yet</p>';
+    } else {
+        // Show Images
+        grid.style.display = 'grid';
+        scannedDocs.forEach((doc, index) => {
+            const img = document.createElement('img');
+            img.src = doc;
+            img.onclick = () => { 
+                currentEditIndex = index; 
+                document.getElementById('editor-img').src = doc; 
+                openSheet('editor-modal'); 
+            };
+            grid.appendChild(img);
+        });
+    }
     openSheet('gallery-modal');
 }
 function rotateImage() {
