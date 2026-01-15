@@ -386,3 +386,73 @@ body, html {
 .donate-btn:active {
     transform: scale(0.95);
 }
+/* ... (Keep existing CSS) ... */
+
+/* New Auto Toggle Pill */
+.glass-pill {
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 8px 16px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Shutter Button & Progress Ring Container */
+.shutter-outer {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Remove old border since we use SVG now */
+    border: none; 
+}
+
+/* The White Circle Button */
+#capture-btn {
+    width: 60px;
+    height: 60px;
+    background: #fff;
+    border: none;
+    border-radius: 50%;
+    box-shadow: 0 0 15px rgba(0,0,0,0.3);
+    z-index: 2; /* Sit on top of ring */
+    transition: transform 0.1s;
+}
+
+#capture-btn:active {
+    transform: scale(0.9);
+}
+
+/* The Progress Ring (SVG) */
+.progress-ring {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: rotate(-90deg); /* Start from top */
+    z-index: 1;
+    pointer-events: none;
+}
+
+.progress-ring__circle {
+    stroke-dasharray: 238; /* Circumference of r=38 */
+    stroke-dashoffset: 238; /* Start empty */
+    transition: stroke-dashoffset 0.1s linear; /* Smooth fill */
+}
+
+/* Make sure modal layer is high enough */
+.modal {
+    z-index: 2000;
+}
+.ui-layer {
+    z-index: 999;
+}
