@@ -27,10 +27,17 @@ const qualitySelect = document.getElementById('quality-select');
 document.addEventListener('DOMContentLoaded', () => {
     setupButtons();
     setupTouchFocus();
-    startCamera();
     
-    if(progressCircle) progressCircle.style.strokeDashoffset = 251; // Reset Ring
+    // Security Check: Camera won't work on HTTP unless localhost
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        alert("Camera requires HTTPS. Please run on a secure server or localhost.");
+    }
 
+    startCamera(); // Try default resolution
+    
+    if(progressCircle) progressCircle.style.strokeDashoffset = 251; 
+
+    // Load OpenCV
     if (typeof cv !== 'undefined' && cv.getBuildInformation) {
         onOpenCVReady();
     } else {
@@ -48,31 +55,67 @@ function onOpenCVReady() {
     isCVReady = true;
     console.log("OpenCV Ready");
     statusMsg.innerText = "Ready";
+    statusMsg.style.background = "rgba(0, 200, 0, 0.6)";
     requestAnimationFrame(processVideoFrame);
 }
 
-// --- CAMERA LOGIC ---
-async function startCamera() {
+// --- ROBUST CAMERA LOGIC ---
+async function startCamera(overrideWidth = null) {
     const quality = qualitySelect.value;
-    let width = 1920, height = 1080; 
-    if (quality === '4k') { width = 3840; height = 2160; }
-    else if (quality === '720p') { width = 1280; height = 720; }
+    let width = overrideWidth || 1920; 
+    let height = (width === 3840) ? 2160 : (width === 1280 ? 720 : 1080);
+    
+    // Manual Quality Override
+    if (!overrideWidth) {
+        if (quality === '4k') { width = 3840; height = 2160; }
+        else if (quality === '720p') { width = 1280; height = 720; }
+    }
 
-    if (currentStream) currentStream.getTracks().forEach(track => track.stop());
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+    }
+
+    statusMsg.innerText = "Starting Camera...";
+    statusMsg.style.background = "rgba(0,0,0,0.5)";
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment", width: { ideal: width }, height: { ideal: height } },
+            video: { 
+                facingMode: "environment", 
+                width: { ideal: width }, 
+                height: { ideal: height } 
+            },
             audio: false
         });
+        
         currentStream = stream;
         video.srcObject = stream;
+        
+        // Wait for video to actually play
         video.onloadedmetadata = () => {
-            video.play();
-            resizeCanvas();
-            window.addEventListener('resize', resizeCanvas);
+            video.play().then(() => {
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+                statusMsg.innerText = "Ready";
+                statusMsg.style.background = "rgba(30, 28, 34, 0.85)";
+            }).catch(e => {
+                console.error("Play error:", e);
+                statusMsg.innerText = "Play Error";
+                statusMsg.style.background = "rgba(255, 0, 0, 0.6)";
+            });
         };
-    } catch (e) { statusMsg.innerText = "No Camera"; }
+    } catch (e) {
+        console.error("Camera Error:", e);
+        // FALLBACK: If 4K failed, try 1080p. If 1080p failed, try any camera.
+        if (width > 1280) {
+            console.log("Downgrading resolution...");
+            startCamera(1280);
+        } else {
+            statusMsg.innerText = "Permission Denied";
+            statusMsg.style.background = "rgba(255, 0, 0, 0.8)";
+            alert("Camera access failed. Check permissions.");
+        }
+    }
 }
 
 function resizeCanvas() {
@@ -149,7 +192,7 @@ function processVideoFrame() {
                 detectedQuad = [tl, tr, br, bl]; 
             } else { detectedQuad = sortPoints(points); }
 
-            // Draw Quad
+            // Draw
             ctx.strokeStyle = '#D0BCFF'; ctx.fillStyle = 'rgba(208, 188, 255, 0.2)';
             ctx.beginPath(); ctx.moveTo(detectedQuad[0].x, detectedQuad[0].y);
             for (let i = 1; i < 4; i++) ctx.lineTo(detectedQuad[i].x, detectedQuad[i].y);
@@ -231,7 +274,22 @@ function closeSheet(id) {
     document.querySelector('.ui-layer').style.display = 'flex';
 }
 
-// --- CAPTURE & CROP ---
+function setupTouchFocus() {
+    const app = document.getElementById('app-container');
+    app.addEventListener('click', (e) => {
+        if (e.target.closest('button') || e.target.closest('.modal-sheet') || e.target.closest('.ui-layer')) return;
+        const rect = video.getBoundingClientRect();
+        const scaleX = video.videoWidth / rect.width;
+        const scaleY = video.videoHeight / rect.height;
+        focusPoint = { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+        focusRing.style.display = 'block';
+        focusRing.style.left = e.clientX + 'px';
+        focusRing.style.top = e.clientY + 'px';
+        if (focusTimer) clearTimeout(focusTimer);
+        focusTimer = setTimeout(() => { focusPoint = null; focusRing.style.display = 'none'; }, 4000);
+    });
+}
+
 function captureImage() {
     isProcessing = true;
     stabilityCounter = 0;
@@ -384,22 +442,6 @@ window.applyFilter = function(type) {
     };
     img.src = scannedDocs[currentEditIndex];
 };
-
-function setupTouchFocus() {
-    const app = document.getElementById('app-container');
-    app.addEventListener('click', (e) => {
-        if (e.target.closest('button') || e.target.closest('.modal-sheet') || e.target.closest('.ui-layer')) return;
-        const rect = video.getBoundingClientRect();
-        const scaleX = video.videoWidth / rect.width;
-        const scaleY = video.videoHeight / rect.height;
-        focusPoint = { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
-        focusRing.style.display = 'block';
-        focusRing.style.left = e.clientX + 'px';
-        focusRing.style.top = e.clientY + 'px';
-        if (focusTimer) clearTimeout(focusTimer);
-        focusTimer = setTimeout(() => { focusPoint = null; focusRing.style.display = 'none'; }, 4000);
-    });
-}
 
 // OCR
 async function extractText() {
