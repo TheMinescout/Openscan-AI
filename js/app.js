@@ -1,4 +1,4 @@
-console.log("✅ app.js v3.1 running");
+console.log("✅ app.js v3.2 running");
 
 // --- STATE MANAGEMENT ---
 let scannedDocs = [];
@@ -7,7 +7,7 @@ let currentEditIndex = -1;
 let detectedQuad = null; 
 let isCVReady = false;
 let isAutoCaptureOn = true;
-let stabilityThreshold = 20; // Default: Normal
+let stabilityThreshold = 20; 
 let stabilityCounter = 0;
 let isProcessing = false;
 let focusPoint = null;
@@ -31,16 +31,13 @@ document.addEventListener('DOMContentLoaded', () => {
     setupButtons();
     setupTouchFocus();
     
-    // Security Check
     if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-        alert("Camera requires HTTPS. Please run on a secure server or localhost.");
+        alert("Camera requires HTTPS.");
     }
 
     startCamera(); 
-    
     if(progressCircle) progressCircle.style.strokeDashoffset = 251; 
 
-    // Load OpenCV
     if (typeof cv !== 'undefined' && cv.getBuildInformation) {
         onOpenCVReady();
     } else {
@@ -58,7 +55,6 @@ function onOpenCVReady() {
     isCVReady = true;
     console.log("OpenCV Ready");
     statusMsg.innerText = "Ready";
-    statusMsg.style.background = "rgba(30, 28, 34, 0.85)";
     requestAnimationFrame(processVideoFrame);
 }
 
@@ -77,44 +73,21 @@ async function startCamera(overrideWidth = null) {
         currentStream.getTracks().forEach(track => track.stop());
     }
 
-    statusMsg.innerText = "Starting...";
-    statusMsg.style.background = "rgba(0,0,0,0.5)";
-
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                facingMode: "environment", 
-                width: { ideal: width }, 
-                height: { ideal: height } 
-            },
+            video: { facingMode: "environment", width: { ideal: width }, height: { ideal: height } },
             audio: false
         });
-        
         currentStream = stream;
         video.srcObject = stream;
-        
         video.onloadedmetadata = () => {
-            video.play().then(() => {
-                resizeCanvas();
-                window.addEventListener('resize', resizeCanvas);
-                statusMsg.innerText = "Ready";
-                statusMsg.style.background = "rgba(30, 28, 34, 0.85)";
-            }).catch(e => {
-                console.error("Play error:", e);
-                statusMsg.innerText = "Play Error";
-                statusMsg.style.background = "rgba(255, 0, 0, 0.6)";
-            });
+            video.play();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
         };
     } catch (e) {
-        console.error("Camera Error:", e);
-        if (width > 1280) {
-            console.log("Downgrading resolution...");
-            startCamera(1280);
-        } else {
-            statusMsg.innerText = "Permission Denied";
-            statusMsg.style.background = "rgba(255, 0, 0, 0.8)";
-            alert("Camera access failed. Check permissions.");
-        }
+        if (width > 1280) startCamera(1280);
+        else statusMsg.innerText = "No Camera";
     }
 }
 
@@ -158,10 +131,8 @@ function processVideoFrame() {
             let cnt = contours.get(i);
             let area = cv.contourArea(cnt);
             if (area > minArea) {
-                if (focusPoint) {
-                    if (cv.pointPolygonTest(cnt, new cv.Point(focusPoint.x, focusPoint.y), false) < 0) {
-                        cnt.delete(); continue;
-                    }
+                if (focusPoint && cv.pointPolygonTest(cnt, new cv.Point(focusPoint.x, focusPoint.y), false) < 0) {
+                    cnt.delete(); continue;
                 }
                 if (area > maxArea) {
                     maxArea = area;
@@ -192,7 +163,6 @@ function processVideoFrame() {
                 detectedQuad = [tl, tr, br, bl]; 
             } else { detectedQuad = sortPoints(points); }
 
-            // Draw
             ctx.strokeStyle = '#D0BCFF'; ctx.fillStyle = 'rgba(208, 188, 255, 0.2)';
             ctx.beginPath(); ctx.moveTo(detectedQuad[0].x, detectedQuad[0].y);
             for (let i = 1; i < 4; i++) ctx.lineTo(detectedQuad[i].x, detectedQuad[i].y);
@@ -201,7 +171,6 @@ function processVideoFrame() {
             if (isAutoCaptureOn) {
                 stabilityCounter++;
                 statusMsg.innerText = "Steady...";
-                
                 let progress = stabilityCounter / stabilityThreshold;
                 progressCircle.style.strokeDashoffset = 251 - (251 * progress);
 
@@ -245,10 +214,7 @@ function setupButtons() {
         progressCircle.style.strokeDashoffset = 251;
     };
 
-    autoSpeedSelect.onchange = () => {
-        stabilityThreshold = parseInt(autoSpeedSelect.value);
-    };
-
+    autoSpeedSelect.onchange = () => { stabilityThreshold = parseInt(autoSpeedSelect.value); };
     qualitySelect.onchange = () => startCamera();
 
     document.getElementById('capture-btn').onclick = captureImage;
@@ -296,11 +262,8 @@ function setupTouchFocus() {
 }
 
 function captureImage() {
-    isProcessing = true;
-    stabilityCounter = 0;
-    progressCircle.style.strokeDashoffset = 251;
+    isProcessing = true; stabilityCounter = 0; progressCircle.style.strokeDashoffset = 251;
     video.style.opacity = "0.2"; setTimeout(() => video.style.opacity = "1", 150);
-
     const hidden = document.getElementById('hidden-canvas');
     hidden.width = video.videoWidth; hidden.height = video.videoHeight;
     const ctx = hidden.getContext('2d');
@@ -409,13 +372,20 @@ function finishCrop() {
 
 function saveScan(imgData) {
     scannedDocs.push(imgData);
+    
+    // UPDATE THUMBNAIL
+    lastScanImg.src = imgData; 
+    lastScanImg.style.display = 'block'; 
+    document.querySelector('.placeholder-icon').style.display = 'none';
+    scanCount.innerText = scannedDocs.length;
+    scanCount.style.display = 'block';
+
     freezeLayer.style.backgroundImage = `url(${imgData})`;
     freezeLayer.style.display = 'block';
     void freezeLayer.offsetWidth; 
     freezeLayer.classList.add('fly-to-corner');
     setTimeout(() => {
         freezeLayer.style.display = 'none'; freezeLayer.classList.remove('fly-to-corner');
-        lastScanImg.src = imgData; lastScanImg.style.display = 'block'; scanCount.innerText = scannedDocs.length;
         isProcessing = false; 
     }, 700);
 }
@@ -448,7 +418,6 @@ window.applyFilter = function(type) {
     img.src = scannedDocs[currentEditIndex];
 };
 
-// OCR
 async function extractText() {
     const img = document.getElementById('editor-img');
     alert("Scanning text... this may take a moment.");
@@ -467,35 +436,19 @@ function updateCurrentImage(newData) {
     document.getElementById('editor-img').src = newData;
     scannedDocs[currentEditIndex] = newData;
 }
-
-// GALLERY LOGIC (FIXED)
 function openGallery() {
-    const grid = document.getElementById('gallery-grid');
-    grid.innerHTML = ''; // Clear previous
-
+    const grid = document.getElementById('gallery-grid'); grid.innerHTML = '';
+    
     if (scannedDocs.length === 0) {
-        // Show "No Scans" message
-        grid.style.display = 'flex';
-        grid.style.alignItems = 'center';
-        grid.style.justifyContent = 'center';
-        grid.innerHTML = '<p style="color: #666;">No scans yet</p>';
+        grid.innerHTML = '<div style="text-align:center; padding:40px; color:#666;">No scans yet</div>';
     } else {
-        // Show Images
-        grid.style.display = 'grid';
         scannedDocs.forEach((doc, index) => {
-            const img = document.createElement('img');
-            img.src = doc;
-            img.onclick = () => { 
-                currentEditIndex = index; 
-                document.getElementById('editor-img').src = doc; 
-                openSheet('editor-modal'); 
-            };
+            const img = document.createElement('img'); img.src = doc; img.onclick = () => { currentEditIndex = index; document.getElementById('editor-img').src = doc; openSheet('editor-modal'); };
             grid.appendChild(img);
         });
     }
     openSheet('gallery-modal');
 }
-
 function rotateImage() {
     const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); const img = new Image();
     img.onload = () => {
@@ -527,7 +480,6 @@ function exportPDF() {
         doc.addImage(img, 'JPEG', 0, 0, w, h);
     });
     
-    // Web Share API
     const blob = doc.output('blob');
     const file = new File([blob], "OpenScan.pdf", { type: "application/pdf" });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
