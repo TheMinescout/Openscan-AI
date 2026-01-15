@@ -23,16 +23,20 @@
 <body>
     <div id="app-container">
         <video id="video-feed" autoplay playsinline muted></video>
+        
         <canvas id="overlay-canvas"></canvas>
+
         <div id="focus-ring"></div>
 
         <div class="ui-layer">
             <div class="top-bar">
-                <button id="settings-btn" class="icon-btn material-symbols-outlined">settings</button>
-                <div id="auto-toggle" class="chip">
-                    <span class="material-symbols-outlined">shutter_speed</span>
+                <button id="settings-btn" class="icon-btn material-symbols-outlined" style="background: rgba(0,0,0,0.4);">settings</button>
+                
+                <div id="auto-toggle" class="chip" style="margin: 0;">
+                    <span class="material-symbols-outlined" style="font-size: 18px;">shutter_speed</span>
                     <span id="auto-text">Auto</span>
                 </div>
+                
                 <div id="status-msg" class="status-pill">Ready</div>
             </div>
 
@@ -107,7 +111,7 @@
                 </button>
                 <button class="action-item" onclick="extractText()">
                     <span class="material-symbols-outlined">text_snippet</span>
-                    <label>Extract</label>
+                    <label>Text</label>
                 </button>
                 <button class="action-item" onclick="rotateImage()">
                     <span class="material-symbols-outlined">rotate_right</span>
@@ -124,12 +128,12 @@
                 <div class="list-item">
                     <div class="list-text">
                         <span class="list-title">Scan Quality</span>
-                        <span class="list-subtitle">Higher quality = slower processing</span>
+                        <span class="list-subtitle">Higher resolution = slower speed</span>
                     </div>
                     <select id="quality-select" class="m3-select">
                         <option value="4k">4K (Ultra)</option>
-                        <option value="1080p" selected>1080p</option>
-                        <option value="720p">720p</option>
+                        <option value="1080p" selected>1080p (Standard)</option>
+                        <option value="720p">720p (Fast)</option>
                     </select>
                 </div>
 
@@ -145,10 +149,10 @@
 
                 <div class="input-group">
                     <label>PDF Password (Optional)</label>
-                    <input type="password" id="pdf-password" class="m3-input" placeholder="Enter password">
+                    <input type="password" id="pdf-password" class="m3-input" placeholder="Set password...">
                 </div>
 
-                <div class="btn-group">
+                <div class="btn-group" style="margin-top: 20px;">
                     <button id="tutorial-btn" class="btn-tonal">
                         <span class="material-symbols-outlined">menu_book</span>
                         How to Use
@@ -159,7 +163,7 @@
                     </button>
                 </div>
                 
-                <button id="close-settings" class="btn-filled" style="width:100%; margin-top:10px;">Done</button>
+                <button id="close-settings" class="btn-filled" style="margin-top:10px;">Done</button>
             </div>
         </div>
 
@@ -171,16 +175,16 @@
             </div>
             <div class="sheet-content scrollable">
                 <div class="card">
-                    <h3>1. Scan</h3>
-                    <p>Point at a document. The <span style="color:#D0BCFF">Blue Box</span> means it's detected. Hold still for the ring to fill.</p>
+                    <h3>1. Point & Scan</h3>
+                    <p>Point your camera at a document. A <span style="color:#D0BCFF">Blue Box</span> means it is detected. Hold still, and the ring will fill up to capture automatically.</p>
                 </div>
                 <div class="card">
                     <h3>2. Magic Fix</h3>
-                    <p>Use the <b>Magic Fix</b> filter in the editor to flatten shadows and boost contrast automatically.</p>
+                    <p>In the editor, use the <b>Magic Fix</b> filter. This uses AI to flatten shadows and make the paper look bright white.</p>
                 </div>
                 <div class="card">
-                    <h3>3. Export</h3>
-                    <p>Tap the PDF button to share or save your documents.</p>
+                    <h3>3. Extract Text</h3>
+                    <p>Tap the <b>Text</b> button to run on-device OCR and copy the text to your clipboard.</p>
                 </div>
             </div>
         </div>
@@ -189,10 +193,10 @@
             <div class="sheet-drag-handle"></div>
             <div class="sheet-content center-text">
                 <h2>OpenScan AI</h2>
-                <p>Private. Local. Intelligent.</p>
+                <p style="color: #ccc; margin-bottom: 20px;">Secure. Local. Intelligent.</p>
                 
-                <div class="donate-card">
-                    <p>Support development:</p>
+                <div class="donate-card" style="background: #211F26; padding: 20px; border-radius: 16px;">
+                    <p style="margin-bottom: 15px;">Support development:</p>
                     <a href="https://buymeacoffee.com/theminescout" target="_blank" class="btn-filled gold">
                         ☕ Buy Me a Coffee
                     </a>
@@ -205,16 +209,18 @@
         <div id="text-result-modal" class="modal-sheet full-height">
             <div class="sheet-header">
                 <button onclick="document.getElementById('text-result-modal').style.display='none'" class="icon-btn material-symbols-outlined">close</button>
-                <span class="sheet-title">Text</span>
+                <span class="sheet-title">Extracted Text</span>
                 <button onclick="copyOCRText()" class="text-btn primary">Copy</button>
             </div>
             <div class="sheet-content full-height">
-                <textarea id="ocr-result-area" class="m3-textarea"></textarea>
+                <textarea id="ocr-result-area" class="m3-textarea" placeholder="Text will appear here..."></textarea>
             </div>
         </div>
 
     </div>
+    
     <canvas id="hidden-canvas" style="display:none;"></canvas>
+    
     <script src="js/app.js"></script>
 </body>
 </html>
