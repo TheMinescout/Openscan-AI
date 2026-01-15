@@ -1,4 +1,4 @@
-// --- STATE ---
+// --- STATE MANAGEMENT ---
 let scannedDocs = [];
 let currentRawImg = null;
 let currentEditIndex = -1;
@@ -12,6 +12,7 @@ let focusPoint = null;
 let focusTimer = null;
 let currentStream = null;
 
+// DOM Elements
 const video = document.getElementById('video-feed');
 const overlayCanvas = document.getElementById('overlay-canvas');
 const freezeLayer = document.getElementById('freeze-layer');
@@ -50,7 +51,7 @@ function onOpenCVReady() {
     requestAnimationFrame(processVideoFrame);
 }
 
-// --- CAMERA ---
+// --- CAMERA LOGIC ---
 async function startCamera() {
     const quality = qualitySelect.value;
     let width = 1920, height = 1080; 
@@ -141,7 +142,6 @@ function processVideoFrame() {
             for (let i = 0; i < approx.rows; i++) points.push({ x: approx.data32S[i * 2], y: approx.data32S[i * 2 + 1] });
             
             if (points.length >= 4) {
-                // Sort corners logic...
                 let tl = points.reduce((prev, curr) => (curr.x + curr.y) < (prev.x + prev.y) ? curr : prev);
                 let br = points.reduce((prev, curr) => (curr.x + curr.y) > (prev.x + prev.y) ? curr : prev);
                 let tr = points.reduce((prev, curr) => (curr.x - curr.y) > (prev.x - prev.y) ? curr : prev);
@@ -194,7 +194,6 @@ function sortPoints(points) {
 
 // --- BUTTONS ---
 function setupButtons() {
-    // Auto Toggle
     document.getElementById('auto-toggle').onclick = () => {
         isAutoCaptureOn = !isAutoCaptureOn;
         document.getElementById('auto-text').innerText = isAutoCaptureOn ? "Auto" : "Manual";
@@ -202,12 +201,10 @@ function setupButtons() {
         progressCircle.style.strokeDashoffset = 251;
     };
 
-    // Main Actions
     document.getElementById('capture-btn').onclick = captureImage;
     document.getElementById('gallery-trigger').onclick = () => openSheet('gallery-modal');
     document.getElementById('close-gallery').onclick = () => closeSheet('gallery-modal');
     
-    // Modals
     document.getElementById('settings-btn').onclick = () => openSheet('settings-modal');
     document.getElementById('close-settings').onclick = () => closeSheet('settings-modal');
     document.getElementById('tutorial-btn').onclick = () => { closeSheet('settings-modal'); openSheet('tutorial-modal'); };
@@ -215,17 +212,16 @@ function setupButtons() {
     document.getElementById('about-btn').onclick = () => { closeSheet('settings-modal'); openSheet('about-modal'); };
     document.getElementById('close-about').onclick = () => closeSheet('about-modal');
 
-    // Editor
     document.getElementById('close-editor').onclick = () => closeSheet('editor-modal');
     document.getElementById('delete-page-btn').onclick = deleteCurrentPage;
     document.getElementById('export-btn').onclick = exportPDF;
 
-    // Crop
     document.getElementById('done-crop').onclick = finishCrop;
     document.getElementById('cancel-crop').onclick = () => { closeSheet('crop-modal'); isProcessing = false; };
+    
+    qualitySelect.onchange = () => startCamera();
 }
 
-// --- SHEET LOGIC (Updated for M3) ---
 function openSheet(id) {
     document.getElementById(id).style.display = 'flex';
     document.querySelector('.ui-layer').style.display = 'none';
@@ -269,9 +265,6 @@ function prepareCropModal(imgSrc, autoPoints) {
     };
     previewImgObj.src = imgSrc;
 }
-
-// ... (setupHandles, startDrag, drawCropLines - Same as before, just ensure handles use .crop-handle class) ...
-// I will include setupHandles and finishCrop here for completeness
 
 function setupHandles(w, h, autoPoints, scale) {
     const handles = document.querySelectorAll('.crop-handle');
@@ -330,7 +323,6 @@ function finishCrop() {
     let src = cv.imread(previewImgObj);
     let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [ p[0].x, p[0].y, p[1].x, p[1].y, p[2].x, p[2].y, p[3].x, p[3].y ]);
     
-    // Calculate aspect ratio
     let w1 = Math.hypot(p[1].x - p[0].x, p[1].y - p[0].y);
     let w2 = Math.hypot(p[2].x - p[3].x, p[2].y - p[3].y);
     let h1 = Math.hypot(p[3].x - p[0].x, p[3].y - p[0].y);
@@ -346,9 +338,6 @@ function finishCrop() {
     let canvas = document.createElement('canvas');
     cv.imshow(canvas, dst);
     
-    // AUTO-ENHANCE (Magic Fix) applied by default on crop
-    // You can disable this if you prefer raw
-    // For now, let's just save the result
     saveScan(canvas.toDataURL('image/jpeg', 0.9));
 
     src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
@@ -368,41 +357,31 @@ function saveScan(imgData) {
     }, 700);
 }
 
-// --- FILTERS ---
+// --- FILTERS & TOOLS ---
 window.applyFilter = function(type) {
     const canvas = document.createElement('canvas'); 
     const ctx = canvas.getContext('2d'); 
     const img = new Image();
     
     img.onload = () => {
-        canvas.width = img.width; 
-        canvas.height = img.height;
-        
+        canvas.width = img.width; canvas.height = img.height;
         if (type === 'original') {
             ctx.drawImage(img, 0, 0);
         } else {
             let src = cv.imread(img);
             let dst = new cv.Mat();
-            
             if (type === 'bw') {
-                // Simple B&W
                 cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
                 cv.threshold(src, dst, 128, 255, cv.THRESH_BINARY);
             } else if (type === 'magic') {
-                // AI Flatten / Magic Fix
                 cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
-                // Adaptive Thresholding removes shadows
                 cv.adaptiveThreshold(src, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 15, 10);
             }
-            
             cv.imshow(canvas, dst);
             src.delete(); dst.delete();
         }
-        
         updateCurrentImage(canvas.toDataURL('image/jpeg', 0.9));
     };
-    // Always apply filters to the currently edited image
-    // If you want non-destructive, store original separately (implied in previous code)
     img.src = scannedDocs[currentEditIndex];
 };
 
@@ -422,9 +401,6 @@ function setupTouchFocus() {
     });
 }
 
-// ... (Include extractText, copyOCRText, rotateImage, exportPDF from previous version) ...
-// For brevity, paste those standard functions here. They work identically but need to be present.
-
 // OCR
 async function extractText() {
     const img = document.getElementById('editor-img');
@@ -440,7 +416,6 @@ function copyOCRText() {
     alert("Copied!");
 }
 
-// HELPERS
 function updateCurrentImage(newData) {
     document.getElementById('editor-img').src = newData;
     scannedDocs[currentEditIndex] = newData;
@@ -483,5 +458,13 @@ function exportPDF() {
         const h = (props.height * w) / props.width;
         doc.addImage(img, 'JPEG', 0, 0, w, h);
     });
-    doc.save("OpenScan.pdf");
+    
+    // Web Share API
+    const blob = doc.output('blob');
+    const file = new File([blob], "OpenScan.pdf", { type: "application/pdf" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'Scanned Document' });
+    } else {
+        doc.save("OpenScan.pdf");
+    }
 }
