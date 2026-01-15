@@ -10,7 +10,7 @@ const STABILITY_THRESHOLD = 20;
 let isProcessing = false;
 let focusPoint = null;
 let focusTimer = null;
-let currentStream = null; // Track stream to stop it when changing quality
+let currentStream = null; 
 
 const video = document.getElementById('video-feed');
 const overlayCanvas = document.getElementById('overlay-canvas');
@@ -22,12 +22,12 @@ const uiLayer = document.querySelector('.ui-layer');
 const focusRing = document.getElementById('focus-ring');
 const autoToggleBtn = document.getElementById('auto-toggle');
 const progressCircle = document.querySelector('.progress-ring__circle');
-const qualitySelect = document.getElementById('quality-select'); // NEW
+const qualitySelect = document.getElementById('quality-select'); 
 
 document.addEventListener('DOMContentLoaded', () => {
     setupButtons();
     setupTouchFocus(); 
-    startCamera(); // Starts with default (1080p)
+    startCamera(); 
     
     if(progressCircle) progressCircle.style.strokeDashoffset = 238;
 
@@ -53,14 +53,12 @@ function onOpenCVReady() {
 
 // --- CAMERA LOGIC ---
 async function startCamera() {
-    // 1. Get Selected Quality
     const quality = qualitySelect.value;
-    let width = 1920, height = 1080; // Default 1080p
+    let width = 1920, height = 1080; 
 
     if (quality === '4k') { width = 3840; height = 2160; }
     else if (quality === '720p') { width = 1280; height = 720; }
 
-    // 2. Stop old stream if exists
     if (currentStream) {
         currentStream.getTracks().forEach(track => track.stop());
     }
@@ -83,7 +81,6 @@ async function startCamera() {
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
             
-            // Flash status
             const oldText = statusMsg.innerText;
             statusMsg.innerText = quality.toUpperCase() + " Ready";
             setTimeout(() => statusMsg.innerText = oldText, 2000);
@@ -231,9 +228,8 @@ function setupButtons() {
         else { span.innerText = "OFF"; span.style.color = "#FF3B30"; progressCircle.style.strokeDashoffset = 238; }
     };
     
-    // Quality Change Listener
     qualitySelect.onchange = () => {
-        startCamera(); // Restart with new setting
+        startCamera(); 
     };
 
     document.getElementById('capture-btn').onclick = captureImage;
@@ -247,8 +243,14 @@ function setupButtons() {
     document.getElementById('settings-btn').onclick = () => toggleModal('settings-modal', true);
     document.getElementById('close-settings').onclick = () => toggleModal('settings-modal', false);
     document.getElementById('export-btn').onclick = exportPDF;
+    
+    // About Button
     document.getElementById('about-btn').onclick = () => { toggleModal('settings-modal', false); toggleModal('about-modal', true); };
     document.getElementById('close-about').onclick = () => toggleModal('about-modal', false);
+
+    // Tutorial Button (NEW)
+    document.getElementById('tutorial-btn').onclick = () => { toggleModal('settings-modal', false); toggleModal('tutorial-modal', true); };
+    document.getElementById('close-tutorial').onclick = () => toggleModal('tutorial-modal', false);
 }
 
 function toggleModal(modalId, show) {
@@ -416,7 +418,6 @@ function openEditor(index) {
     toggleModal('editor-modal', true);
 }
 
-// NEW: OCR FUNCTION
 async function extractText() {
     const img = document.getElementById('editor-img');
     const statusMsg = document.createElement('div');
@@ -483,13 +484,11 @@ function deleteCurrentPage() {
     }
 }
 
-// SECURITY & EXPORT
 function exportPDF() {
     if (scannedDocs.length === 0) return alert("Nothing to export!");
     if (!window.jspdf) return alert("PDF Library not loaded.");
     const { jsPDF } = window.jspdf;
     
-    // Check Password
     const password = document.getElementById('pdf-password').value;
     const options = password ? { encryption: { userPassword: password, ownerPassword: password, userPermissions: ["print", "modify", "copy", "annot-forms"] } } : {};
     
@@ -503,7 +502,6 @@ function exportPDF() {
         doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
     });
     
-    // CLOUD INTEGRATION (WEB SHARE API)
     const pdfBlob = doc.output('blob');
     const file = new File([pdfBlob], "OpenScan_Doc.pdf", { type: "application/pdf" });
 
