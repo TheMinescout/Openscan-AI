@@ -10,6 +10,7 @@ const STABILITY_THRESHOLD = 20;
 let isProcessing = false;
 let focusPoint = null;
 let focusTimer = null;
+let currentStream = null; // Track stream to stop it when changing quality
 
 const video = document.getElementById('video-feed');
 const overlayCanvas = document.getElementById('overlay-canvas');
@@ -21,11 +22,12 @@ const uiLayer = document.querySelector('.ui-layer');
 const focusRing = document.getElementById('focus-ring');
 const autoToggleBtn = document.getElementById('auto-toggle');
 const progressCircle = document.querySelector('.progress-ring__circle');
+const qualitySelect = document.getElementById('quality-select'); // NEW
 
 document.addEventListener('DOMContentLoaded', () => {
     setupButtons();
     setupTouchFocus(); 
-    startCamera();
+    startCamera(); // Starts with default (1080p)
     
     if(progressCircle) progressCircle.style.strokeDashoffset = 238;
 
@@ -49,17 +51,42 @@ function onOpenCVReady() {
     requestAnimationFrame(processVideoFrame);
 }
 
+// --- CAMERA LOGIC ---
 async function startCamera() {
+    // 1. Get Selected Quality
+    const quality = qualitySelect.value;
+    let width = 1920, height = 1080; // Default 1080p
+
+    if (quality === '4k') { width = 3840; height = 2160; }
+    else if (quality === '720p') { width = 1280; height = 720; }
+
+    // 2. Stop old stream if exists
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+    }
+
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+            video: { 
+                facingMode: "environment", 
+                width: { ideal: width }, 
+                height: { ideal: height } 
+            },
             audio: false
         });
+        
+        currentStream = stream;
         video.srcObject = stream;
+        
         video.onloadedmetadata = () => {
             video.play();
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
+            
+            // Flash status
+            const oldText = statusMsg.innerText;
+            statusMsg.innerText = quality.toUpperCase() + " Ready";
+            setTimeout(() => statusMsg.innerText = oldText, 2000);
         };
     } catch (e) { statusMsg.innerText = "Camera Denied"; }
 }
@@ -202,6 +229,11 @@ function setupButtons() {
         const span = autoToggleBtn.querySelector('span');
         if (isAutoCaptureOn) { span.innerText = "ON"; span.style.color = "#00FF00"; }
         else { span.innerText = "OFF"; span.style.color = "#FF3B30"; progressCircle.style.strokeDashoffset = 238; }
+    };
+    
+    // Quality Change Listener
+    qualitySelect.onchange = () => {
+        startCamera(); // Restart with new setting
     };
 
     document.getElementById('capture-btn').onclick = captureImage;
@@ -424,7 +456,7 @@ window.applyFilter = function(type) {
         }
         updateCurrentImage(canvas.toDataURL('image/jpeg', 0.9));
     };
-    img.src = scannedDocs[currentEditIndex]; // Apply to original to prevent degradation
+    img.src = scannedDocs[currentEditIndex];
 };
 
 window.rotateImage = function() {
@@ -441,7 +473,6 @@ window.rotateImage = function() {
 function updateCurrentImage(newData) {
     document.getElementById('editor-img').src = newData;
     scannedDocs[currentEditIndex] = newData;
-    // Update gallery grid logic removed for brevity, re-opens automatically on back
 }
 
 function deleteCurrentPage() {
@@ -481,7 +512,7 @@ function exportPDF() {
             files: [file],
             title: 'Scanned Document',
             text: 'Here is your scan from OpenScan AI.'
-        }).catch(err => doc.save("OpenScan_Doc.pdf")); // Fallback to download
+        }).catch(err => doc.save("OpenScan_Doc.pdf"));
     } else {
         doc.save("OpenScan_Doc.pdf");
     }
