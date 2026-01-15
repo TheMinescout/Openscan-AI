@@ -1,20 +1,21 @@
-console.log("✅ app.js v3.2 running");
+console.log("✅ app.js v4.0 running");
 
-// --- STATE MANAGEMENT ---
-let scannedDocs = [];
-let currentRawImg = null;
+// --- STATE ---
+let scannedDocs = [];   // Processed images (Edits saved here)
+let rawDocs = [];       // Original camera captures (For Re-Crop)
 let currentEditIndex = -1;
 let detectedQuad = null; 
 let isCVReady = false;
 let isAutoCaptureOn = true;
-let stabilityThreshold = 20; 
+let stabilityThreshold = 20;
 let stabilityCounter = 0;
 let isProcessing = false;
+let retakeMode = false; // Flag for retake
 let focusPoint = null;
 let focusTimer = null;
 let currentStream = null;
 
-// DOM Elements
+// DOM
 const video = document.getElementById('video-feed');
 const overlayCanvas = document.getElementById('overlay-canvas');
 const freezeLayer = document.getElementById('freeze-layer');
@@ -32,23 +33,14 @@ document.addEventListener('DOMContentLoaded', () => {
     setupTouchFocus();
     
     if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-        alert("Camera requires HTTPS.");
+        alert("HTTPS Required.");
     }
 
-    startCamera(); 
+    startCamera();
     if(progressCircle) progressCircle.style.strokeDashoffset = 251; 
 
-    if (typeof cv !== 'undefined' && cv.getBuildInformation) {
-        onOpenCVReady();
-    } else {
-        document.addEventListener('opencv_ready', onOpenCVReady);
-        let checkCV = setInterval(() => {
-            if (typeof cv !== 'undefined' && cv.getBuildInformation) {
-                clearInterval(checkCV);
-                onOpenCVReady();
-            }
-        }, 500);
-    }
+    if (typeof cv !== 'undefined' && cv.getBuildInformation) onOpenCVReady();
+    else document.addEventListener('opencv_ready', onOpenCVReady);
 });
 
 function onOpenCVReady() {
@@ -58,7 +50,7 @@ function onOpenCVReady() {
     requestAnimationFrame(processVideoFrame);
 }
 
-// --- CAMERA LOGIC ---
+// --- CAMERA ---
 async function startCamera(overrideWidth = null) {
     const quality = qualitySelect.value;
     let width = overrideWidth || 1920; 
@@ -69,9 +61,7 @@ async function startCamera(overrideWidth = null) {
         else if (quality === '720p') { width = 1280; height = 720; }
     }
 
-    if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
-    }
+    if (currentStream) currentStream.getTracks().forEach(track => track.stop());
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -229,21 +219,15 @@ function setupButtons() {
     document.getElementById('close-about').onclick = () => closeSheet('about-modal');
 
     document.getElementById('close-editor').onclick = () => closeSheet('editor-modal');
-    document.getElementById('delete-page-btn').onclick = deleteCurrentPage;
+    document.getElementById('save-editor').onclick = () => { closeSheet('editor-modal'); openGallery(); }; // Save & Close
     document.getElementById('export-btn').onclick = exportPDF;
 
     document.getElementById('done-crop').onclick = finishCrop;
     document.getElementById('cancel-crop').onclick = () => { closeSheet('crop-modal'); isProcessing = false; };
 }
 
-function openSheet(id) {
-    document.getElementById(id).style.display = 'flex';
-    document.querySelector('.ui-layer').style.display = 'none';
-}
-function closeSheet(id) {
-    document.getElementById(id).style.display = 'none';
-    document.querySelector('.ui-layer').style.display = 'flex';
-}
+function openSheet(id) { document.getElementById(id).style.display = 'flex'; document.querySelector('.ui-layer').style.display = 'none'; }
+function closeSheet(id) { document.getElementById(id).style.display = 'none'; document.querySelector('.ui-layer').style.display = 'flex'; }
 
 function setupTouchFocus() {
     const app = document.getElementById('app-container');
@@ -262,14 +246,25 @@ function setupTouchFocus() {
 }
 
 function captureImage() {
-    isProcessing = true; stabilityCounter = 0; progressCircle.style.strokeDashoffset = 251;
+    isProcessing = true;
+    stabilityCounter = 0;
+    progressCircle.style.strokeDashoffset = 251;
     video.style.opacity = "0.2"; setTimeout(() => video.style.opacity = "1", 150);
+
     const hidden = document.getElementById('hidden-canvas');
     hidden.width = video.videoWidth; hidden.height = video.videoHeight;
     const ctx = hidden.getContext('2d');
     ctx.drawImage(video, 0, 0);
-    currentRawImg = hidden.toDataURL('image/jpeg', 0.9);
-    setTimeout(() => prepareCropModal(currentRawImg, detectedQuad), 200);
+    const rawData = hidden.toDataURL('image/jpeg', 1.0); // Save High Quality
+    
+    // Logic for Retake vs New Scan
+    if (retakeMode) {
+        rawDocs[currentEditIndex] = rawData; // Overwrite raw
+        setTimeout(() => prepareCropModal(rawData, detectedQuad), 200);
+    } else {
+        // Temp storage until crop is confirmed, effectively just passes to crop
+        setTimeout(() => prepareCropModal(rawData, detectedQuad), 200);
+    }
 }
 
 function prepareCropModal(imgSrc, autoPoints) {
@@ -321,11 +316,9 @@ function startDrag(e, handle, container, isTouch) {
         requestAnimationFrame(drawCropLines);
     }
     function stop() {
-        if (isTouch) { document.ontouchmove = null; document.ontouchend = null; }
-        else { document.onmousemove = null; document.onmouseup = null; }
+        if (isTouch) { document.ontouchmove = null; document.ontouchend = null; } else { document.onmousemove = null; document.onmouseup = null; }
     }
-    if (isTouch) { document.ontouchmove = move; document.ontouchend = stop; }
-    else { document.onmousemove = move; document.onmouseup = stop; }
+    if (isTouch) { document.ontouchmove = move; document.ontouchend = stop; } else { document.onmousemove = move; document.onmouseup = stop; }
 }
 
 function drawCropLines() {
@@ -364,14 +357,27 @@ function finishCrop() {
     let canvas = document.createElement('canvas');
     cv.imshow(canvas, dst);
     
-    saveScan(canvas.toDataURL('image/jpeg', 0.9));
+    // Save Result
+    let processedImg = canvas.toDataURL('image/jpeg', 0.9);
+    
+    if (retakeMode) {
+        scannedDocs[currentEditIndex] = processedImg;
+        // Don't modify rawDocs here, it was done in capture
+        openSheet('editor-modal'); // Go back to editor
+        document.getElementById('editor-img').src = processedImg;
+        retakeMode = false;
+    } else {
+        saveScan(processedImg, previewImgObj.src); // Pass raw as well
+    }
 
     src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
     closeSheet('crop-modal');
+    isProcessing = false;
 }
 
-function saveScan(imgData) {
+function saveScan(imgData, rawData) {
     scannedDocs.push(imgData);
+    rawDocs.push(rawData); // Save Original
     
     // UPDATE THUMBNAIL
     lastScanImg.src = imgData; 
@@ -386,11 +392,28 @@ function saveScan(imgData) {
     freezeLayer.classList.add('fly-to-corner');
     setTimeout(() => {
         freezeLayer.style.display = 'none'; freezeLayer.classList.remove('fly-to-corner');
-        isProcessing = false; 
     }, 700);
 }
 
-// --- FILTERS & TOOLS ---
+// --- TOOLS: RETAKE & RE-CROP ---
+function performRetake() {
+    retakeMode = true;
+    closeSheet('editor-modal');
+    // Camera is already running under UI
+    alert("Retake Mode: Capture a new photo to replace this one.");
+}
+
+function startReCrop() {
+    if (rawDocs[currentEditIndex]) {
+        closeSheet('editor-modal');
+        retakeMode = true; // Treating re-crop save like a retake save (overwrite)
+        prepareCropModal(rawDocs[currentEditIndex], null);
+    } else {
+        alert("Original image not found.");
+    }
+}
+
+// --- FILTERS ---
 window.applyFilter = function(type) {
     const canvas = document.createElement('canvas'); 
     const ctx = canvas.getContext('2d'); 
@@ -398,44 +421,93 @@ window.applyFilter = function(type) {
     
     img.onload = () => {
         canvas.width = img.width; canvas.height = img.height;
+        let src = cv.imread(img);
+        let dst = new cv.Mat();
+
         if (type === 'original') {
-            ctx.drawImage(img, 0, 0);
-        } else {
-            let src = cv.imread(img);
-            let dst = new cv.Mat();
-            if (type === 'bw') {
-                cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
-                cv.threshold(src, dst, 128, 255, cv.THRESH_BINARY);
-            } else if (type === 'magic') {
-                cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
-                cv.adaptiveThreshold(src, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 15, 10);
-            }
-            cv.imshow(canvas, dst);
-            src.delete(); dst.delete();
+            // Revert to raw cropped state (need to store cropped-raw? For now, revert to current saved state)
+            // Ideally we re-crop the rawDoc, but let's just use what we have or implement a "clean" copy.
+            // Simplified: Just draw image.
+            src.copyTo(dst); 
+        } 
+        else if (type === 'bw') {
+            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
+            cv.threshold(src, dst, 128, 255, cv.THRESH_BINARY);
+        } 
+        else if (type === 'gray') {
+            cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
+        }
+        else if (type === 'magic') {
+            cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
+            cv.adaptiveThreshold(src, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 15, 10);
+        }
+        else if (type === 'invert') {
+            cv.bitwise_not(src, dst);
+        }
+        else if (type === 'lighten') {
+            src.convertTo(dst, -1, 1.2, 30); // Alpha 1.2, Beta 30
+        }
+        else if (type === 'darken') {
+            src.convertTo(dst, -1, 0.8, -30);
+        }
+        else if (type === 'sharpen') {
+            let kernel = cv.matFromArray(3, 3, cv.CV_32F, [0, -1, 0, -1, 5, -1, 0, -1, 0]);
+            cv.filter2D(src, dst, -1, kernel);
+            kernel.delete();
+        }
+
+        cv.imshow(canvas, dst);
+        updateCurrentImage(canvas.toDataURL('image/jpeg', 0.9));
+        src.delete(); dst.delete();
+    };
+    // Always filter the CURRENT image in editor to allow stacking? 
+    // Or filter the "Saved" version? Let's filter the one on screen for stacking.
+    img.src = document.getElementById('editor-img').src; 
+};
+
+function rotateImage(angle) {
+    const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); const img = new Image();
+    img.onload = () => {
+        if(Math.abs(angle) === 90) {
+            canvas.width = img.height; canvas.height = img.width;
+            ctx.translate(canvas.width/2, canvas.height/2);
+            ctx.rotate(angle * Math.PI / 180);
+            ctx.drawImage(img, -img.width/2, -img.height/2);
         }
         updateCurrentImage(canvas.toDataURL('image/jpeg', 0.9));
     };
-    img.src = scannedDocs[currentEditIndex];
-};
+    img.src = document.getElementById('editor-img').src;
+}
+
+function flipImage() {
+    const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); const img = new Image();
+    img.onload = () => {
+        canvas.width = img.width; canvas.height = img.height;
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, 0, 0);
+        updateCurrentImage(canvas.toDataURL('image/jpeg', 0.9));
+    };
+    img.src = document.getElementById('editor-img').src;
+}
 
 async function extractText() {
     const img = document.getElementById('editor-img');
-    alert("Scanning text... this may take a moment.");
+    alert("Scanning text... wait.");
     try {
         const { data: { text } } = await Tesseract.recognize(img.src, 'eng');
         document.getElementById('ocr-result-area').value = text;
         openSheet('text-result-modal');
-    } catch (e) { alert("OCR Error"); }
+    } catch (e) { alert("OCR Failed"); }
 }
-function copyOCRText() {
-    navigator.clipboard.writeText(document.getElementById('ocr-result-area').value);
-    alert("Copied!");
-}
+
+function copyOCRText() { navigator.clipboard.writeText(document.getElementById('ocr-result-area').value); alert("Copied!"); }
 
 function updateCurrentImage(newData) {
     document.getElementById('editor-img').src = newData;
     scannedDocs[currentEditIndex] = newData;
 }
+
 function openGallery() {
     const grid = document.getElementById('gallery-grid'); grid.innerHTML = '';
     
@@ -449,23 +521,25 @@ function openGallery() {
     }
     openSheet('gallery-modal');
 }
-function rotateImage() {
-    const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); const img = new Image();
-    img.onload = () => {
-        canvas.width = img.height; canvas.height = img.width;
-        ctx.translate(canvas.width / 2, canvas.height / 2); ctx.rotate(90 * Math.PI / 180);
-        ctx.drawImage(img, -img.width / 2, -img.height / 2);
-        updateCurrentImage(canvas.toDataURL('image/jpeg', 0.9));
-    };
-    img.src = document.getElementById('editor-img').src;
-}
+
 function deleteCurrentPage() {
     if (confirm("Delete page?")) {
         scannedDocs.splice(currentEditIndex, 1);
+        rawDocs.splice(currentEditIndex, 1);
         closeSheet('editor-modal');
         openGallery();
+        // Update badge
+        scanCount.innerText = scannedDocs.length;
+        if(scannedDocs.length===0) { 
+            scanCount.style.display='none'; 
+            document.querySelector('.placeholder-icon').style.display='block'; 
+            lastScanImg.style.display='none';
+        } else {
+            lastScanImg.src = scannedDocs[scannedDocs.length-1];
+        }
     }
 }
+
 function exportPDF() {
     if (scannedDocs.length === 0) return alert("Scan something first!");
     const { jsPDF } = window.jspdf;
@@ -479,12 +553,8 @@ function exportPDF() {
         const h = (props.height * w) / props.width;
         doc.addImage(img, 'JPEG', 0, 0, w, h);
     });
-    
     const blob = doc.output('blob');
     const file = new File([blob], "OpenScan.pdf", { type: "application/pdf" });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        navigator.share({ files: [file], title: 'Scanned Document' });
-    } else {
-        doc.save("OpenScan.pdf");
-    }
+    if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: 'Scanned Document' });
+    else doc.save("OpenScan.pdf");
 }
