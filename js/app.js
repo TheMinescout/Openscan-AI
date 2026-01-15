@@ -1,3 +1,5 @@
+console.log("✅ app.js v3.1 (Canvas Fix) running");
+
 // --- STATE MANAGEMENT ---
 let scannedDocs = [];
 let currentRawImg = null;
@@ -5,7 +7,7 @@ let currentEditIndex = -1;
 let detectedQuad = null; 
 let isCVReady = false;
 let isAutoCaptureOn = true;
-let stabilityThreshold = 20; // Default (Normal)
+let stabilityThreshold = 20; // Default: Normal
 let stabilityCounter = 0;
 let isProcessing = false;
 let focusPoint = null;
@@ -98,12 +100,15 @@ async function startCamera(overrideWidth = null) {
                 statusMsg.innerText = "Ready";
                 statusMsg.style.background = "rgba(30, 28, 34, 0.85)";
             }).catch(e => {
+                console.error("Play error:", e);
                 statusMsg.innerText = "Play Error";
                 statusMsg.style.background = "rgba(255, 0, 0, 0.6)";
             });
         };
     } catch (e) {
+        console.error("Camera Error:", e);
         if (width > 1280) {
+            console.log("Downgrading resolution...");
             startCamera(1280);
         } else {
             statusMsg.innerText = "Permission Denied";
@@ -197,7 +202,6 @@ function processVideoFrame() {
                 stabilityCounter++;
                 statusMsg.innerText = "Steady...";
                 
-                // Dynamic Threshold Logic
                 let progress = stabilityCounter / stabilityThreshold;
                 progressCircle.style.strokeDashoffset = 251 - (251 * progress);
 
@@ -241,10 +245,11 @@ function setupButtons() {
         progressCircle.style.strokeDashoffset = 251;
     };
 
-    // Auto Speed Listener
     autoSpeedSelect.onchange = () => {
         stabilityThreshold = parseInt(autoSpeedSelect.value);
     };
+
+    qualitySelect.onchange = () => startCamera();
 
     document.getElementById('capture-btn').onclick = captureImage;
     document.getElementById('gallery-trigger').onclick = () => openSheet('gallery-modal');
@@ -263,8 +268,6 @@ function setupButtons() {
 
     document.getElementById('done-crop').onclick = finishCrop;
     document.getElementById('cancel-crop').onclick = () => { closeSheet('crop-modal'); isProcessing = false; };
-    
-    qualitySelect.onchange = () => startCamera();
 }
 
 function openSheet(id) {
@@ -374,6 +377,7 @@ function drawCropLines() {
     ctx.fillStyle = 'white'; p.forEach(point => { ctx.beginPath(); ctx.arc(point.x, point.y, 6, 0, Math.PI * 2); ctx.fill(); });
 }
 
+// --- KEY FIX: Use DOM Canvas instead of detached ---
 function finishCrop() {
     const handles = document.querySelectorAll('.crop-handle');
     const container = document.getElementById('crop-ui-container');
@@ -395,9 +399,12 @@ function finishCrop() {
     let dst = new cv.Mat();
     cv.warpPerspective(src, dst, M, new cv.Size(maxWidth, maxHeight), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
 
-    let canvas = document.createElement('canvas');
-    cv.imshow(canvas, dst);
+    // FIX: Use the existing hidden canvas to ensure DOM attachment
+    let canvas = document.getElementById('hidden-canvas');
+    canvas.width = maxWidth;
+    canvas.height = maxHeight;
     
+    cv.imshow(canvas, dst);
     saveScan(canvas.toDataURL('image/jpeg', 0.9));
 
     src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
