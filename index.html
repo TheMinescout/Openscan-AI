@@ -96,13 +96,23 @@
                 <div style="width: 30px;"></div>
             </div>
             <div class="settings-content" style="padding: 20px; color: white;">
+                
+                <div class="setting-item">
+                    <label>Scan Quality</label>
+                    <select id="quality-select" style="background: #333; color: white; border: none; padding: 8px; border-radius: 8px; font-size: 14px;">
+                        <option value="4k">4K (Ultra HD)</option>
+                        <option value="1080p" selected>1080p (Full HD)</option>
+                        <option value="720p">720p (Fast)</option>
+                    </select>
+                </div>
+                <hr style="border-color: #333; margin: 15px 0;">
+
                 <div class="setting-item">
                     <label>Auto-Enhance</label>
                     <input type="checkbox" checked>
                 </div>
-                <hr style="border-color: #333; margin: 15px 0;">
                 
-                <div class="setting-item" style="display:block;">
+                <div class="setting-item" style="display:block; margin-top: 15px;">
                     <label style="display:block; margin-bottom: 8px;">PDF Security (Password)</label>
                     <input type="password" id="pdf-password" placeholder="Optional" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #444; background: #222; color: white;">
                 </div>
