@@ -26,8 +26,12 @@
 
         <div class="ui-layer">
             <div class="top-nav">
-                <button id="delete-last-btn" class="glass-btn" title="Delete Last Scan" style="opacity:0">🗑️</button>
+                <button id="auto-toggle" class="glass-pill">
+                    Auto: <span style="color: #00FF00;">ON</span>
+                </button>
+                
                 <div id="status-msg" class="status-pill">Initializing...</div>
+                
                 <button id="settings-btn" class="glass-btn" title="Settings">⚙️</button>
             </div>
 
@@ -38,7 +42,10 @@
                 </div>
 
                 <div class="shutter-outer">
-                    <button id="capture-btn" aria-label="Capture Document"></button>
+                    <svg class="progress-ring" width="84" height="84">
+                        <circle class="progress-ring__circle" stroke="#007AFF" stroke-width="4" fill="transparent" r="38" cx="42" cy="42"/>
+                    </svg>
+                    <button id="capture-btn" aria-label="Capture"></button>
                 </div>
 
                 <button id="export-btn" class="glass-btn primary-action">PDF</button>
@@ -51,14 +58,12 @@
             <div class="modal-header">
                 <button id="cancel-crop">Retake</button>
                 <span class="modal-title">Adjust Corners</span>
-                <button id="done-crop" class="primary-text">Warp & Keep</button>
+                <button id="done-crop" class="primary-text">Keep</button>
             </div>
             <div class="crop-container" id="crop-ui-container">
                 <canvas id="crop-canvas"></canvas>
-                <div class="crop-handle"></div>
-                <div class="crop-handle"></div>
-                <div class="crop-handle"></div>
-                <div class="crop-handle"></div>
+                <div class="crop-handle"></div><div class="crop-handle"></div>
+                <div class="crop-handle"></div><div class="crop-handle"></div>
             </div>
         </div>
 
@@ -77,24 +82,12 @@
                 <span class="modal-title">Edit Page</span>
                 <div style="width: 30px;"></div>
             </div>
-            
-            <div class="editor-view">
-                <img id="editor-img" src="">
-            </div>
-
+            <div class="editor-view"><img id="editor-img" src=""></div>
             <div class="editor-toolbar">
-                <button class="edit-btn" onclick="applyFilter('original')">
-                    <span>🎨</span><label>Original</label>
-                </button>
-                <button class="edit-btn" onclick="applyFilter('bw')">
-                    <span>📄</span><label>B&W</label>
-                </button>
-                <button class="edit-btn" onclick="rotateImage()">
-                    <span>🔄</span><label>Rotate</label>
-                </button>
-                <button class="edit-btn destuctive" id="delete-page-btn">
-                    <span>🗑️</span><label>Delete</label>
-                </button>
+                <button class="edit-btn" onclick="applyFilter('original')"><span>🎨</span><label>Original</label></button>
+                <button class="edit-btn" onclick="applyFilter('bw')"><span>📄</span><label>B&W</label></button>
+                <button class="edit-btn" onclick="rotateImage()"><span>🔄</span><label>Rotate</label></button>
+                <button class="edit-btn destuctive" id="delete-page-btn"><span>🗑️</span><label>Delete</label></button>
             </div>
         </div>
 
@@ -105,59 +98,29 @@
                 <div style="width: 30px;"></div>
             </div>
             <div class="settings-content" style="padding: 20px; color: white;">
-                <div class="setting-item">
-                    <label>High Resolution</label>
-                    <input type="checkbox" checked>
-                </div>
+                <div class="setting-item"><label>High Res</label><input type="checkbox" checked></div>
                 <hr style="border-color: #333; margin: 15px 0;">
-                <div class="setting-item">
-                    <label>Auto-Enhance</label>
-                    <input type="checkbox" checked>
-                </div>
-                
-                <button id="about-btn" class="menu-btn" style="margin-top: 30px;">
-                    About & Donate ❤️
-                </button>
-
-                <p style="margin-top: 30px; color: #666; font-size: 12px; text-align: center;">
-                    OpenScan Pro v2.0<br>
-                    Running Offline
-                </p>
+                <button id="about-btn" class="menu-btn" style="margin-top: 30px;">About & Donate ❤️</button>
             </div>
         </div>
 
-        <div id="about-modal" class="modal" style="z-index: 200;"> <div class="modal-header">
+        <div id="about-modal" class="modal" style="z-index: 200;">
+            <div class="modal-header">
                 <button id="close-about">Close</button>
                 <span class="modal-title">About Us</span>
                 <div style="width: 30px;"></div>
             </div>
             <div class="about-content" style="padding: 30px; text-align: center; color: white;">
-                <h1 style="margin-bottom: 10px;">OpenScan AI</h1>
-                <p style="color: #aaa; margin-bottom: 30px;">
-                    A powerful, privacy-focused document scanner that runs entirely on your device. No cloud uploads, no tracking.
-                </p>
-                
+                <h1>OpenScan AI</h1>
+                <p style="color: #aaa; margin-bottom: 30px;">Privacy-focused scanner.</p>
                 <div class="donate-section" style="background: #222; padding: 20px; border-radius: 15px;">
-                    <h3>Support the Project</h3>
-                    <p style="font-size: 14px; margin: 10px 0 20px; color: #ccc;">
-                        If you find this app useful, consider buying me a coffee to keep the updates coming!
-                    </p>
-                    
-                    <a href="https://buymeacoffee.com/theminescout" target="_blank" class="donate-btn">
-                        ☕ Buy Me a Coffee
-                    </a>
+                    <a href="https://buymeacoffee.com/theminescout" target="_blank" class="donate-btn">☕ Buy Me a Coffee</a>
                 </div>
-                
-                <p style="margin-top: 40px; font-size: 12px; color: #555;">
-                    Built with ❤️ using OpenCV & Web Tech
-                </p>
             </div>
         </div>
 
     </div>
-
     <canvas id="hidden-canvas" style="display:none;"></canvas>
-
     <script src="js/app.js"></script>
 </body>
 </html>
