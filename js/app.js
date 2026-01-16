@@ -1,6 +1,6 @@
 /**
- * OpenScan-AI v6.0 - Optimized Core
- * Smooth performance using downscaling for detection & pooled memory.
+ * OpenScan-AI v6.1 - Thresholding Fix
+ * Switched to Binary Thresholding for robust detection of white paper on dark backgrounds.
  */
 
 const app = {
@@ -9,22 +9,22 @@ const app = {
     streaming: false,
     autoCapture: true,
     processing: false,
-    scannedDocs: [], // { full: dataUrl, thumb: dataUrl }
+    scannedDocs: [], 
     currentDocIndex: -1,
     
     // Detection Config
-    detectWidth: 480, // Internal resolution for AI (Faster!)
+    detectWidth: 600, // Higher res for better accuracy
     stabilityCounter: 0,
-    stabilityThreshold: 15,
-    detectedQuad: null, // Coordinates in range [0, 1] (Normalized)
+    stabilityThreshold: 10, // Faster capture
+    detectedQuad: null, 
     
-    // OpenCV Memory Pool (Prevents Garbage Collection Lag)
-    mat: { src: null, dst: null, gray: null, blur: null, edges: null, contours: null, hierarchy: null, poly: null },
+    // OpenCV Memory Pool
+    mat: { src: null, dst: null, gray: null, blur: null, binary: null, contours: null, hierarchy: null, poly: null },
 
     elements: {},
 
     init: function() {
-        console.log("🚀 OpenScan-AI initializing...");
+        console.log("🚀 OpenScan-AI v6.1 initializing...");
         this.cacheElements();
         this.bindEvents();
         
@@ -33,7 +33,8 @@ const app = {
             this.onOpenCVReady();
         } else {
             document.addEventListener('opencv_ready', () => this.onOpenCVReady());
-            setTimeout(() => { if(!this.cvReady) this.onOpenCVReady(); }, 2000); // Fallback
+            // Fallback check
+            setTimeout(() => { if(!this.cvReady && typeof cv !== 'undefined') this.onOpenCVReady(); }, 1000);
         }
     },
 
@@ -130,14 +131,19 @@ const app = {
     },
 
     initCVMats: function() {
-        // Pre-allocate memory once
-        const h = Math.round(this.detectWidth * (this.elements['video-feed'].videoHeight / this.elements['video-feed'].videoWidth));
+        // Pre-allocate memory
+        // Calculate aspect ratio correct height
+        const video = this.elements['video-feed'];
+        const aspect = video.videoHeight / video.videoWidth;
+        const h = Math.round(this.detectWidth * aspect);
         const w = this.detectWidth;
+        
+        // Dispose old if exists
+        if(this.mat.src) this.mat.src.delete();
         
         this.mat.src = new cv.Mat(h, w, cv.CV_8UC4);
         this.mat.dst = new cv.Mat(h, w, cv.CV_8UC1);
-        this.mat.blur = new cv.Mat();
-        this.mat.edges = new cv.Mat();
+        this.mat.binary = new cv.Mat(h, w, cv.CV_8UC1);
         this.mat.hierarchy = new cv.Mat();
         this.mat.poly = new cv.Mat();
     },
@@ -145,11 +151,10 @@ const app = {
     processFrame: function() {
         if (!this.streaming || !this.cvReady) return;
         
-        // 1. Draw video to small processing canvas (Downscaling)
         const video = this.elements['video-feed'];
         const procCvs = this.elements['proc-canvas'];
         
-        // Match aspect ratio
+        // 1. Maintain correct aspect ratio in processing canvas
         if(procCvs.width !== this.detectWidth) {
             procCvs.width = this.detectWidth;
             procCvs.height = Math.round(this.detectWidth * (video.videoHeight / video.videoWidth));
@@ -157,44 +162,53 @@ const app = {
 
         this.ctxProc.drawImage(video, 0, 0, procCvs.width, procCvs.height);
         
-        // 2. OpenCV Processing
+        // 2. OpenCV Pipeline (Threshold Method)
         try {
             let src = this.mat.src;
             src.data.set(this.ctxProc.getImageData(0, 0, procCvs.width, procCvs.height).data);
             
+            // Grayscale
             cv.cvtColor(src, this.mat.dst, cv.COLOR_RGBA2GRAY);
-            cv.GaussianBlur(this.mat.dst, this.mat.blur, new cv.Size(5, 5), 0);
-            cv.Canny(this.mat.blur, this.mat.edges, 75, 200);
+            
+            // Blur (Removes noise/text details)
+            cv.GaussianBlur(this.mat.dst, this.mat.dst, new cv.Size(5, 5), 0);
+            
+            // Threshold (Everything bright becomes pure white, everything else black)
+            // This fills the paper as a solid block!
+            cv.threshold(this.mat.dst, this.mat.binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
             
             let contours = new cv.MatVector();
-            cv.findContours(this.mat.edges, contours, this.mat.hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            cv.findContours(this.mat.binary, contours, this.mat.hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
             let maxArea = 0;
             let bestContour = null;
+            // Reduced min area to 5% (was 15%) to detect smaller/further documents
+            let minArea = (procCvs.width * procCvs.height) * 0.05; 
 
-            // Find biggest quad
             for (let i = 0; i < contours.size(); ++i) {
                 let cnt = contours.get(i);
                 let area = cv.contourArea(cnt);
-                let minArea = (procCvs.width * procCvs.height) * 0.15; // Must be 15% of screen
 
                 if (area > minArea) {
                     let peri = cv.arcLength(cnt, true);
                     cv.approxPolyDP(cnt, this.mat.poly, 0.02 * peri, true);
                     
-                    if (this.mat.poly.rows === 4 && area > maxArea && cv.isContourConvex(this.mat.poly)) {
+                    // If it has 4 corners, perfect. If it has more (folded paper), we still track it if it's huge.
+                    if (area > maxArea && (this.mat.poly.rows === 4 || area > minArea * 3)) {
                         maxArea = area;
-                        bestContour = this.mat.poly.data32S; // Int32Array [x,y, x,y...]
+                        bestContour = this.mat.poly.data32S; // Store raw points
                     }
                 }
             }
 
-            contours.delete(); // Must clean up MatVector manually
-            
-            // 3. Update UI
+            contours.delete(); 
             this.drawOverlay(bestContour, procCvs.width, procCvs.height);
 
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error(e);
+            // Re-init if memory glitch
+            this.initCVMats();
+        }
 
         if (!this.processing) requestAnimationFrame(() => this.processFrame());
     },
@@ -206,35 +220,49 @@ const app = {
         ctx.clearRect(0, 0, w, h);
 
         if (pointsData) {
-            // Scale points from Small Canvas -> UI Canvas
+            // Mapping Logic
             const scaleX = w / pW;
             const scaleY = h / pH;
             
-            let pts = [
-                {x: pointsData[0], y: pointsData[1]},
-                {x: pointsData[2], y: pointsData[3]},
-                {x: pointsData[4], y: pointsData[5]},
-                {x: pointsData[6], y: pointsData[7]}
-            ];
+            let pts = [];
+            // Handle 4 points (Quad)
+            if (pointsData.length === 8) {
+                pts = [
+                    {x: pointsData[0], y: pointsData[1]},
+                    {x: pointsData[2], y: pointsData[3]},
+                    {x: pointsData[4], y: pointsData[5]},
+                    {x: pointsData[6], y: pointsData[7]}
+                ];
+            } else {
+                // Fallback: If 5+ points, take bounding box (safer than nothing)
+                // This fixes "folded corners" breaking detection
+                let xMin=9999, yMin=9999, xMax=0, yMax=0;
+                for(let i=0; i<pointsData.length; i+=2) {
+                    if(pointsData[i] < xMin) xMin = pointsData[i];
+                    if(pointsData[i] > xMax) xMax = pointsData[i];
+                    if(pointsData[i+1] < yMin) yMin = pointsData[i+1];
+                    if(pointsData[i+1] > yMax) yMax = pointsData[i+1];
+                }
+                pts = [{x: xMin, y: yMin}, {x: xMax, y: yMin}, {x: xMax, y: yMax}, {x: xMin, y: yMax}];
+            }
             
-            // Organize corners (TL, TR, BR, BL)
             pts = this.sortPoints(pts);
-            this.detectedQuad = pts.map(p => ({ x: p.x / pW, y: p.y / pH })); // Store normalized
+            this.detectedQuad = pts.map(p => ({ x: p.x / pW, y: p.y / pH })); 
 
-            // Draw Quad
+            // Visual Detection Box
             ctx.beginPath();
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = '#D0BCFF';
-            ctx.fillStyle = 'rgba(208, 188, 255, 0.2)';
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = '#D0BCFF'; // Purple
             ctx.moveTo(pts[0].x * scaleX, pts[0].y * scaleY);
             for(let i=1; i<4; i++) ctx.lineTo(pts[i].x * scaleX, pts[i].y * scaleY);
             ctx.closePath();
             ctx.stroke();
-            ctx.fill();
 
-            // Auto Capture Logic
+            // Auto Capture
             if (this.autoCapture && !this.processing) {
-                this.elements['status-msg'].innerText = "Hold Steady...";
+                this.elements['status-msg'].innerText = "Hold Still";
+                this.elements['status-msg'].style.background = "rgba(0, 200, 0, 0.5)"; // Greenish hint
+                
                 this.stabilityCounter++;
                 const prog = Math.min(this.stabilityCounter / this.stabilityThreshold, 1);
                 this.progressCircle.style.strokeDashoffset = 251 - (251 * prog);
@@ -247,6 +275,7 @@ const app = {
             this.detectedQuad = null;
             this.resetStability();
             this.elements['status-msg'].innerText = "Searching...";
+            this.elements['status-msg'].style.background = "rgba(0, 0, 0, 0.4)";
         }
     },
 
@@ -260,12 +289,10 @@ const app = {
         this.processing = true;
         this.resetStability();
         
-        // Flash Effect
         const flash = this.elements['flash-layer'];
         flash.style.opacity = 0.8;
         setTimeout(() => flash.style.opacity = 0, 150);
 
-        // Capture Full Resolution Frame
         const video = this.elements['video-feed'];
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
@@ -273,15 +300,12 @@ const app = {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0);
 
-        // Convert normalized detected points to full resolution
         let points = this.detectedQuad;
-        
+        // Fallback for manual capture: center crop
         if (!points || isManual) {
-            // Default to detection or full screen if nothing found
-            if(!points) points = [{x:0.2, y:0.2}, {x:0.8, y:0.2}, {x:0.8, y:0.8}, {x:0.2, y:0.8}];
+            if(!points) points = [{x:0.15, y:0.15}, {x:0.85, y:0.15}, {x:0.85, y:0.85}, {x:0.15, y:0.85}];
         }
         
-        // Denormalize points
         const fullPoints = points.map(p => ({ x: p.x * canvas.width, y: p.y * canvas.height }));
 
         this.rawCapture = canvas.toDataURL('image/jpeg');
@@ -291,17 +315,15 @@ const app = {
     openCropModal: function(imgSrc, points) {
         const modal = this.elements['crop-modal'];
         modal.style.display = 'flex';
-        this.elements['status-msg'].innerText = "Adjusting";
+        this.elements['status-msg'].innerText = "Adjust Corners";
         
         const canvas = document.getElementById('crop-canvas');
         const container = document.getElementById('crop-ui-container');
         
-        // Load image to calculate display size
         this.previewImg = new Image();
         this.previewImg.onload = () => {
-            // Fit logic
             const maxW = window.innerWidth - 48;
-            const maxH = window.innerHeight * 0.6;
+            const maxH = window.innerHeight * 0.7;
             const scale = Math.min(maxW / this.previewImg.width, maxH / this.previewImg.height);
             
             const dispW = this.previewImg.width * scale;
@@ -312,11 +334,9 @@ const app = {
             container.style.width = dispW + "px";
             container.style.height = dispH + "px";
             
-            // Draw Image
             const ctx = canvas.getContext('2d');
             ctx.drawImage(this.previewImg, 0, 0, dispW, dispH);
             
-            // Position Handles
             this.cropPoints = points.map(p => ({ x: p.x * scale, y: p.y * scale }));
             this.updateCropUI(scale);
         };
@@ -327,40 +347,46 @@ const app = {
         const handles = document.querySelectorAll('.crop-handle');
         const ctx = document.getElementById('crop-canvas').getContext('2d');
         
-        // Redraw Image
         ctx.drawImage(this.previewImg, 0, 0, ctx.canvas.width, ctx.canvas.height);
         
-        // Draw Lines
+        // Fill Crop Area (Darken outside)
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
         ctx.beginPath();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = '#D0BCFF';
+        ctx.moveTo(0,0); ctx.lineTo(ctx.canvas.width, 0); ctx.lineTo(ctx.canvas.width, ctx.canvas.height); ctx.lineTo(0, ctx.canvas.height); ctx.closePath();
+        
+        ctx.moveTo(this.cropPoints[0].x, this.cropPoints[0].y);
+        ctx.lineTo(this.cropPoints[1].x, this.cropPoints[1].y);
+        ctx.lineTo(this.cropPoints[2].x, this.cropPoints[2].y);
+        ctx.lineTo(this.cropPoints[3].x, this.cropPoints[3].y);
+        ctx.closePath();
+        ctx.fill('evenodd');
+
+        // Draw Lines
+        ctx.strokeStyle = '#D0BCFF'; ctx.lineWidth = 2;
+        ctx.beginPath();
         ctx.moveTo(this.cropPoints[0].x, this.cropPoints[0].y);
         this.cropPoints.forEach(p => ctx.lineTo(p.x, p.y));
         ctx.closePath();
         ctx.stroke();
 
-        // Update Handles DOM
         handles.forEach((h, i) => {
             h.style.left = this.cropPoints[i].x + 'px';
             h.style.top = this.cropPoints[i].y + 'px';
             
-            // Drag Logic
             const onMove = (e) => {
                 e.preventDefault();
-                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                const cx = e.touches ? e.touches[0].clientX : e.clientX;
+                const cy = e.touches ? e.touches[0].clientY : e.clientY;
                 const rect = document.getElementById('crop-ui-container').getBoundingClientRect();
                 
-                this.cropPoints[i].x = Math.max(0, Math.min(ctx.canvas.width, clientX - rect.left));
-                this.cropPoints[i].y = Math.max(0, Math.min(ctx.canvas.height, clientY - rect.top));
-                this.updateCropUI(scale); // Recursively redraw
+                this.cropPoints[i].x = Math.max(0, Math.min(ctx.canvas.width, cx - rect.left));
+                this.cropPoints[i].y = Math.max(0, Math.min(ctx.canvas.height, cy - rect.top));
+                this.updateCropUI(scale);
             };
             
             const onEnd = () => {
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('mouseup', onEnd);
-                document.removeEventListener('touchmove', onMove);
-                document.removeEventListener('touchend', onEnd);
+                document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onEnd);
+                document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd);
             };
 
             h.onmousedown = (e) => { document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onEnd); };
@@ -369,18 +395,12 @@ const app = {
     },
 
     finishCrop: function() {
-        // Perspective Warp using OpenCV
         const canvas = document.getElementById('crop-canvas');
-        const scale = this.previewImg.width / canvas.width; // Back to full res
+        const scale = this.previewImg.width / canvas.width;
         
-        const srcPts = this.cropPoints.map(p => p.x * scale); // [x1, y1, x2, y2...] but as array of objects
-        // Convert to cv.Mat
-        const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-            srcPts[0].x, srcPts[0].y, srcPts[1].x, srcPts[1].y, 
-            srcPts[2].x, srcPts[2].y, srcPts[3].x, srcPts[3].y
-        ]);
+        const srcPts = this.cropPoints.map(p => p.x * scale);
+        const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [srcPts[0].x, srcPts[0].y, srcPts[1].x, srcPts[1].y, srcPts[2].x, srcPts[2].y, srcPts[3].x, srcPts[3].y]);
 
-        // Calculate dims
         const w1 = Math.hypot(srcPts[1].x - srcPts[0].x, srcPts[1].y - srcPts[0].y);
         const w2 = Math.hypot(srcPts[2].x - srcPts[3].x, srcPts[2].y - srcPts[3].y);
         const h1 = Math.hypot(srcPts[3].x - srcPts[0].x, srcPts[3].y - srcPts[0].y);
@@ -389,21 +409,17 @@ const app = {
         const maxH = Math.max(h1, h2);
 
         const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0,0, maxW,0, maxW,maxH, 0,maxH]);
-        
         const M = cv.getPerspectiveTransform(srcTri, dstTri);
         const srcMat = cv.imread(this.previewImg);
         const dstMat = new cv.Mat();
         
         cv.warpPerspective(srcMat, dstMat, M, new cv.Size(maxW, maxH));
         
-        // Output
         const finalCanvas = document.createElement('canvas');
         cv.imshow(finalCanvas, dstMat);
         const resultUrl = finalCanvas.toDataURL('image/jpeg', 0.9);
         
-        // Cleanup
         srcMat.delete(); dstMat.delete(); M.delete(); srcTri.delete(); dstTri.delete();
-        
         this.saveScan(resultUrl);
     },
 
@@ -411,26 +427,19 @@ const app = {
         this.scannedDocs.push(url);
         this.elements['crop-modal'].style.display = 'none';
         this.processing = false;
-        
-        // Update UI
         this.elements['last-scan-img'].src = url;
         this.elements['last-scan-img'].style.display = 'block';
         document.querySelector('.placeholder-icon').style.display = 'none';
-        
         this.elements['scan-count'].style.display = 'block';
         this.elements['scan-count'].innerText = this.scannedDocs.length;
         this.elements['status-msg'].innerText = "Saved";
-        
-        // Restart loop
         this.processFrame();
     },
     
-    // --- Helper Functions ---
     sortPoints: function(pts) {
-        // Sort by Y to separate top from bottom
         pts.sort((a,b) => a.y - b.y);
-        const top = pts.slice(0, 2).sort((a,b) => a.x - b.x); // TL, TR
-        const bot = pts.slice(2, 4).sort((a,b) => b.x - a.x); // BR, BL
+        const top = pts.slice(0, 2).sort((a,b) => a.x - b.x);
+        const bot = pts.slice(2, 4).sort((a,b) => b.x - a.x);
         return [top[0], top[1], bot[0], bot[1]];
     },
     
@@ -450,7 +459,6 @@ const app = {
         this.elements['gallery-modal'].style.display = 'flex';
     },
 
-    // --- Filters & Tools ---
     applyFilter: function(type) {
         const img = document.getElementById('editor-img');
         const src = cv.imread(img);
@@ -461,20 +469,19 @@ const app = {
             cv.threshold(src, dst, 0, 255, cv.THRESH_BINARY | cv.THRESH_OTSU);
         } else if (type === 'magic') {
             cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
-            cv.adaptiveThreshold(src, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2);
+            cv.adaptiveThreshold(src, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 15, 12);
         } else {
-            src.copyTo(dst); // Original
+            src.copyTo(dst);
         }
         
         const canvas = document.createElement('canvas');
         cv.imshow(canvas, dst);
         img.src = canvas.toDataURL();
-        this.scannedDocs[this.currentDocIndex] = img.src; // Update memory
+        this.scannedDocs[this.currentDocIndex] = img.src;
         src.delete(); dst.delete();
     },
 
     rotateImage: function(deg) {
-        // Simple 90deg rotation via canvas
         const img = document.getElementById('editor-img');
         const c = document.createElement('canvas');
         const ctx = c.getContext('2d');
@@ -492,18 +499,17 @@ const app = {
     
     extractText: async function() {
         const img = document.getElementById('editor-img');
-        this.elements['status-msg'].innerText = "Reading Text...";
+        this.elements['status-msg'].innerText = "OCR Running...";
         try {
             const res = await Tesseract.recognize(img.src, 'eng');
             document.getElementById('ocr-result-area').value = res.data.text;
             document.getElementById('text-result-modal').style.display = 'flex';
             this.elements['status-msg'].innerText = "Done";
-        } catch(e) { alert("OCR Error"); }
+        } catch(e) { alert("OCR Failed"); }
     },
     
     copyOCRText: function() {
         navigator.clipboard.writeText(document.getElementById('ocr-result-area').value);
-        alert("Copied!");
     },
     
     deleteCurrentPage: function() {
@@ -516,10 +522,9 @@ const app = {
     },
     
     exportPDF: function() {
-        if(this.scannedDocs.length === 0) return alert("Nothing to export");
+        if(this.scannedDocs.length === 0) return alert("Scan something first");
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        
         this.scannedDocs.forEach((imgData, i) => {
             if(i > 0) doc.addPage();
             const imgProps = doc.getImageProperties(imgData);
@@ -527,10 +532,8 @@ const app = {
             const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
             doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
         });
-        
         doc.save('OpenScan_Doc.pdf');
     }
 };
 
-// Start
 document.addEventListener('DOMContentLoaded', () => app.init());
