@@ -1,4 +1,4 @@
-/* OpenScan AI Style v6 */
+/* OpenScan AI Style v6.1 */
 :root {
     --primary: #D0BCFF;
     --surface: #141218;
@@ -11,36 +11,39 @@ body { margin: 0; background: #000; color: white; overflow: hidden; width: 100vw
 
 #app-container { position: relative; width: 100%; height: 100%; }
 
-/* Camera & Overlays */
+/* Camera */
 #video-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
 #overlay-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-
 #flash-layer { position: absolute; inset: 0; background: white; opacity: 0; pointer-events: none; transition: opacity 0.1s; z-index: 50; }
 
-/* UI Layers */
+/* UI */
 .ui-layer { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; z-index: 10; pointer-events: none; }
 .ui-layer > * { pointer-events: auto; }
 
 .top-bar { padding: 16px; display: flex; align-items: center; justify-content: space-between; background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%); }
-.bottom-bar { padding: 32px 24px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%); }
 
-/* Buttons & Chips */
+/* BOTTOM BAR FIX */
+.bottom-bar { padding: 32px 24px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%); }
+.bar-left { display: flex; justify-content: flex-start; }
+.bar-center { display: flex; justify-content: center; }
+.bar-right { display: flex; justify-content: flex-end; } /* Pushes PDF button to the right */
+
+/* Controls */
 .icon-btn { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 10px; border-radius: 50%; cursor: pointer; }
 .chip { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.4); padding: 8px 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; }
-.status-pill { background: rgba(0,0,0,0.4); padding: 6px 12px; border-radius: 12px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+.status-pill { background: rgba(0,0,0,0.4); padding: 6px 12px; border-radius: 12px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; transition: background 0.3s; }
 
-/* Shutter */
 .shutter-container { position: relative; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; }
 #capture-btn { width: 60px; height: 60px; border-radius: 50%; background: white; border: none; z-index: 2; transition: transform 0.1s; cursor: pointer; }
 #capture-btn:active { transform: scale(0.9); }
 .progress-ring { position: absolute; transform: rotate(-90deg); z-index: 1; pointer-events: none; }
 .progress-ring__circle { transition: stroke-dashoffset 0.1s linear; }
 
-/* Thumb & FAB */
-.thumbnail-btn { width: 50px; height: 50px; border-radius: 8px; background: rgba(255,255,255,0.1); overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.3); }
+.thumbnail-btn { width: 50px; height: 50px; border-radius: 12px; background: rgba(255,255,255,0.1); overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.3); }
 .thumbnail-btn img { width: 100%; height: 100%; object-fit: cover; }
-.badge { position: absolute; top: 2px; right: 2px; background: var(--primary); color: #000; font-size: 10px; padding: 2px 4px; border-radius: 4px; font-weight: bold; }
-.fab-small { width: 48px; height: 48px; border-radius: 14px; background: var(--surface-container); color: var(--primary); border: none; display: flex; align-items: center; justify-content: center; }
+.badge { position: absolute; top: -5px; right: -5px; background: var(--primary); color: #000; font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: bold; border: 2px solid #000; }
+
+.fab-small { width: 48px; height: 48px; border-radius: 14px; background: var(--surface-container); color: var(--primary); border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 
 /* Modals */
 .modal-sheet { display: none; position: fixed; inset: 0; background: var(--surface); z-index: 100; flex-direction: column; animation: slideUp 0.3s ease; }
@@ -49,10 +52,10 @@ body { margin: 0; background: #000; color: white; overflow: hidden; width: 100vw
 .sheet-title { font-size: 18px; font-weight: 500; }
 .sheet-content { padding: 20px; overflow-y: auto; flex: 1; }
 
-/* Crop UI */
+/* Crop */
 .crop-area { flex: 1; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
 .crop-container { position: relative; }
-.crop-handle { position: absolute; width: 20px; height: 20px; background: var(--primary); border: 2px solid white; border-radius: 50%; transform: translate(-50%, -50%); z-index: 10; touch-action: none; }
+.crop-handle { position: absolute; width: 24px; height: 24px; background: var(--primary); border: 3px solid white; border-radius: 50%; transform: translate(-50%, -50%); z-index: 10; touch-action: none; box-shadow: 0 2px 4px rgba(0,0,0,0.5); }
 
 /* Gallery */
 .gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px; }
@@ -62,15 +65,15 @@ body { margin: 0; background: #000; color: white; overflow: hidden; width: 100vw
 .editor-view { flex: 1; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .editor-view img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .editor-suite { background: var(--surface-container); padding-bottom: env(safe-area-inset-bottom); }
-.scroll-toolbar { display: flex; gap: 16px; padding: 16px; overflow-x: auto; }
-.tool-btn { background: none; border: none; color: white; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 60px; }
+.scroll-toolbar { display: flex; gap: 16px; padding: 16px; overflow-x: auto; scrollbar-width: none; }
+.tool-btn { background: none; border: none; color: white; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 60px; cursor: pointer; }
 .icon-box { font-size: 24px; padding: 10px; background: #333; border-radius: 12px; }
 
-/* Text & Inputs */
+/* Misc */
 .text-btn { background: none; border: none; color: white; font-size: 16px; cursor: pointer; }
 .text-btn.primary { color: var(--primary); }
 .m3-select, .m3-textarea { width: 100%; background: #333; border: none; color: white; padding: 15px; border-radius: 8px; font-size: 16px; outline: none; }
 .m3-textarea { height: 100%; resize: none; font-family: monospace; }
-.btn-filled { width: 100%; background: var(--primary); border: none; padding: 15px; border-radius: 25px; font-size: 16px; font-weight: 600; cursor: pointer; }
+.btn-filled { width: 100%; background: var(--primary); color: #000; border: none; padding: 15px; border-radius: 25px; font-size: 16px; font-weight: 600; cursor: pointer; }
 .list-item { margin-bottom: 20px; }
 .list-title { font-size: 16px; color: #aaa; margin-bottom: 5px; display: block; }
