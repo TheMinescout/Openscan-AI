@@ -126,7 +126,51 @@
                         <option value="720p">720p (Fast)</option>
                     </select>
                 </div>
-                <button id="close-settings" class="btn-filled" style="margin-top:10px;">Done</button>
+                
+                <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 10px;">
+                    <button id="howto-btn" class="btn-tonal">
+                        <span class="material-symbols-outlined">help</span> How to Use
+                    </button>
+                    <button id="about-btn" class="btn-tonal">
+                        <span class="material-symbols-outlined">info</span> About
+                    </button>
+                </div>
+
+                <button id="close-settings" class="btn-filled" style="margin-top:20px;">Done</button>
+            </div>
+        </div>
+
+        <!-- HOW TO MODAL -->
+        <div id="howto-modal" class="modal-sheet">
+            <div class="sheet-header">
+                <span class="sheet-title">How to Use</span>
+                <button onclick="document.getElementById('howto-modal').style.display='none'" class="text-btn">Close</button>
+            </div>
+            <div class="sheet-content">
+                <p style="margin-bottom: 10px;">1. Point camera at a document on a contrasting background.</p>
+                <p style="margin-bottom: 10px;">2. Hold steady. The circle fills up to Auto-Capture.</p>
+                <p style="margin-bottom: 20px;">3. Edit, Filter, and Export to PDF.</p>
+                <a href="https://github.com/theminescout/openscan-ai" target="_blank" class="btn-tonal" style="text-decoration:none;">
+                    View on GitHub
+                </a>
+            </div>
+        </div>
+
+        <!-- ABOUT MODAL -->
+        <div id="about-modal" class="modal-sheet">
+            <div class="sheet-header">
+                <span class="sheet-title">About</span>
+                <button onclick="document.getElementById('about-modal').style.display='none'" class="text-btn">Close</button>
+            </div>
+            <div class="sheet-content" style="text-align: center;">
+                <p style="margin-bottom: 20px;">OpenScan-AI is a free, privacy-first scanner that runs entirely on your device. No cloud uploads.</p>
+                
+                <!-- Buy Me A Book Script -->
+                <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+                    <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="TheMinescout" data-color="#FFDD00" data-emoji="📖"  data-font="Cookie" data-text="Buy me a book" data-outline-color="#000000" data-font-color="#000000" data-coffee-color="#ffffff" ></script>
+                </div>
+                
+                <p style="font-size: 12px; color: #666;">Version 6.2</p>
             </div>
         </div>
 
