@@ -1,5 +1,8 @@
 /**
- * OpenScan-AI v6.2 - Camera Fix & New Features
+ * OpenScan-AI v6.4 - Stability & Logic Fixes
+ * - Slower, more deliberate scanning (1.5s hold).
+ * - Filters out non-paper objects (Convexity check).
+ * - Fixes "Stuck" state on Retake.
  */
 
 const app = {
@@ -9,15 +12,20 @@ const app = {
     processing: false,
     scannedDocs: [], 
     currentDocIndex: -1,
+    
     detectWidth: 600,
+    
+    // Config: Slower and Pickier
     stabilityCounter: 0,
-    stabilityThreshold: 10,
+    stabilityThreshold: 30, // 30 frames ≈ 1 second (was 10)
+    minAreaRatio: 0.15,     // Object must be 15% of screen (was 5%)
+    
     detectedQuad: null, 
     mat: { src: null, dst: null, gray: null, blur: null, binary: null, contours: null, hierarchy: null, poly: null },
     elements: {},
 
     init: function() {
-        console.log("🚀 OpenScan-AI v6.2 Initializing...");
+        console.log("🚀 OpenScan-AI v6.4 Initializing...");
         this.cacheElements();
         this.bindEvents();
         
@@ -40,7 +48,7 @@ const app = {
     },
 
     bindEvents: function() {
-        // Settings & Modals
+        // UI Bindings
         document.getElementById('settings-btn').onclick = () => document.getElementById('settings-modal').style.display = 'flex';
         document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display = 'none';
         
@@ -54,7 +62,6 @@ const app = {
             document.getElementById('about-modal').style.display = 'flex';
         };
         
-        // Toggles & Actions
         document.getElementById('auto-toggle').onclick = () => {
             this.autoCapture = !this.autoCapture;
             document.getElementById('auto-text').innerText = this.autoCapture ? "Auto: ON" : "Auto: OFF";
@@ -68,7 +75,18 @@ const app = {
         document.getElementById('close-editor').onclick = () => this.elements['editor-modal'].style.display = 'none';
         document.getElementById('save-editor').onclick = () => { this.elements['editor-modal'].style.display = 'none'; this.openGallery(); };
         document.getElementById('done-crop').onclick = () => this.finishCrop();
-        document.getElementById('cancel-crop').onclick = () => { this.elements['crop-modal'].style.display = 'none'; this.processing = false; };
+        
+        // --- FIXED RETAKE LOGIC ---
+        document.getElementById('cancel-crop').onclick = () => { 
+            this.elements['crop-modal'].style.display = 'none'; 
+            this.processing = false;
+            this.detectedQuad = null; // Forget previous shape
+            this.resetStability();    // Reset timer
+            // Clear the red overlay immediately
+            this.ctxOverlay.clearRect(0,0, this.elements['overlay-canvas'].width, this.elements['overlay-canvas'].height);
+            this.elements['status-msg'].innerText = "Ready";
+        };
+        
         document.getElementById('export-btn').onclick = () => this.exportPDF();
         document.getElementById('quality-select').onchange = () => this.startCamera();
         window.addEventListener('resize', () => this.resizeOverlay());
@@ -82,36 +100,43 @@ const app = {
         this.startCamera();
     },
 
-    // --- UPDATED CAMERA LOGIC (FIXES ERROR) ---
     startCamera: async function() {
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
         }
 
         const quality = document.getElementById('quality-select').value;
-        const targetWidth = quality === '4k' ? 3840 : (quality === '720p' ? 1280 : 1920);
-        const targetHeight = quality === '4k' ? 2160 : (quality === '720p' ? 720 : 1080);
+        const targetW = quality === '4k' ? 3840 : (quality === '720p' ? 1280 : 1920);
+        const targetH = quality === '4k' ? 2160 : (quality === '720p' ? 720 : 1080);
 
-        // Try 1: Ideal Environment Camera
-        const constraintsIdeal = {
-            video: { facingMode: "environment", width: { ideal: targetWidth }, height: { ideal: targetHeight } },
-            audio: false
-        };
+        const s1 = { video: { facingMode: "environment", width: { ideal: targetW }, height: { ideal: targetH } }, audio: false };
+        const s2 = { video: { facingMode: "environment" }, audio: false };
+        const s3 = { video: { facingMode: "user" }, audio: false };
+        const s4 = { video: true, audio: false };
 
-        // Try 2: Any Camera (Fallback for laptops/errors)
-        const constraintsFallback = {
-            video: true,
-            audio: false
-        };
+        let finalStream = null;
+        let errorMsg = "";
 
         try {
+            finalStream = await navigator.mediaDevices.getUserMedia(s1);
+        } catch (e1) {
             try {
-                this.stream = await navigator.mediaDevices.getUserMedia(constraintsIdeal);
-            } catch (e) {
-                console.warn("Primary camera failed, trying fallback...", e);
-                this.stream = await navigator.mediaDevices.getUserMedia(constraintsFallback);
+                finalStream = await navigator.mediaDevices.getUserMedia(s2);
+            } catch (e2) {
+                try {
+                    finalStream = await navigator.mediaDevices.getUserMedia(s3);
+                } catch (e3) {
+                    try {
+                        finalStream = await navigator.mediaDevices.getUserMedia(s4);
+                    } catch (e4) {
+                        errorMsg = e4.name;
+                    }
+                }
             }
+        }
 
+        if (finalStream) {
+            this.stream = finalStream;
             this.elements['video-feed'].srcObject = this.stream;
             this.elements['video-feed'].onloadedmetadata = () => {
                 this.elements['video-feed'].play();
@@ -120,9 +145,9 @@ const app = {
                 this.initCVMats();
                 this.processFrame();
             };
-        } catch (err) {
-            alert("Could not start camera. Please ensure permissions are allowed. Error: " + err.name);
-            this.elements['status-msg'].innerText = "Cam Failed";
+            this.elements['status-msg'].innerText = "Active";
+        } else {
+            alert("Camera Failed: " + errorMsg);
         }
     },
 
@@ -164,8 +189,12 @@ const app = {
         try {
             let src = this.mat.src;
             src.data.set(this.ctxProc.getImageData(0, 0, procCvs.width, procCvs.height).data);
+            
+            // Greyscale
             cv.cvtColor(src, this.mat.dst, cv.COLOR_RGBA2GRAY);
+            // Blur (reduces text noise)
             cv.GaussianBlur(this.mat.dst, this.mat.dst, new cv.Size(5, 5), 0);
+            // Threshold (Make it black and white)
             cv.threshold(this.mat.dst, this.mat.binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
             
             let contours = new cv.MatVector();
@@ -173,7 +202,7 @@ const app = {
 
             let maxArea = 0;
             let bestContour = null;
-            let minArea = (procCvs.width * procCvs.height) * 0.05; 
+            let minArea = (procCvs.width * procCvs.height) * this.minAreaRatio; // 15% of screen
 
             for (let i = 0; i < contours.size(); ++i) {
                 let cnt = contours.get(i);
@@ -182,9 +211,14 @@ const app = {
                 if (area > minArea) {
                     let peri = cv.arcLength(cnt, true);
                     cv.approxPolyDP(cnt, this.mat.poly, 0.02 * peri, true);
-                    if (area > maxArea && (this.mat.poly.rows === 4 || area > minArea * 3)) {
-                        maxArea = area;
-                        bestContour = this.mat.poly.data32S;
+                    
+                    // Filter: Must be convex (no weird shapes) and have 4 corners
+                    // OR be huge (close up)
+                    if (cv.isContourConvex(this.mat.poly)) {
+                        if (area > maxArea && (this.mat.poly.rows === 4 || area > minArea * 2)) {
+                            maxArea = area;
+                            bestContour = this.mat.poly.data32S;
+                        }
                     }
                 }
             }
@@ -202,6 +236,7 @@ const app = {
         ctx.clearRect(0, 0, w, h);
 
         if (pointsData) {
+            // ... (Same Mapping Logic) ...
             const scaleX = w / pW;
             const scaleY = h / pH;
             let pts = [];
@@ -232,15 +267,22 @@ const app = {
 
             if (this.autoCapture && !this.processing) {
                 this.elements['status-msg'].innerText = "Hold Still";
+                this.elements['status-msg'].style.background = "rgba(0, 200, 0, 0.5)";
+                
                 this.stabilityCounter++;
                 const prog = Math.min(this.stabilityCounter / this.stabilityThreshold, 1);
                 this.progressCircle.style.strokeDashoffset = 251 - (251 * prog);
-                if (this.stabilityCounter >= this.stabilityThreshold) this.triggerCapture(false);
+                
+                if (this.stabilityCounter >= this.stabilityThreshold) {
+                    this.triggerCapture(false);
+                }
             }
         } else {
+            // Nothing detected - Reset stability
             this.detectedQuad = null;
             this.resetStability();
             this.elements['status-msg'].innerText = "Searching...";
+            this.elements['status-msg'].style.background = "rgba(0,0,0,0.4)";
         }
     },
 
