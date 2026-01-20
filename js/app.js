@@ -1,50 +1,73 @@
 /**
- * OpenScan-AI v7.0 - Cloud Enabled
+ * OpenScan-AI v7.1 - Resilient Mode
+ * Loads Camera FIRST, then attempts Cloud Sync.
+ * If Cloud fails, the app continues in Offline Mode.
  */
-import { FireManager } from "./fire-manager.js";
 
 const app = {
-    // ... (Standard Variables)
     cvReady: false, streaming: false, autoCapture: true, processing: false,
     scannedDocs: [], currentDocIndex: -1, detectWidth: 600,
     stabilityCounter: 0, stabilityThreshold: 30, detectedQuad: null,
     mat: { src: null, dst: null, gray: null, binary: null, contours: null, hierarchy: null, poly: null },
     elements: {},
+    
+    // Cloud State
+    FireManager: null,
+    isCloudActive: false,
 
-    init: function() {
-        console.log("🚀 OpenScan-AI v7.0 Cloud Init...");
+    init: async function() {
+        console.log("🚀 OpenScan-AI v7.1 Initializing...");
         this.cacheElements();
         this.bindEvents();
         
-        // Initialize Firebase Module
-        FireManager.init((user) => this.onAuthChange(user));
-        
+        // 1. START OPENCV/CAMERA IMMEDIATELY (Don't wait for cloud)
         if (typeof cv !== 'undefined' && cv.getBuildInformation) this.onOpenCVReady();
         else document.addEventListener('opencv_ready', () => this.onOpenCVReady());
+
+        // 2. ATTEMPT TO LOAD FIREBASE (Safely)
+        try {
+            console.log("☁️ Attempting to connect to Cloud...");
+            const module = await import("./fire-manager.js");
+            this.FireManager = module.FireManager;
+            
+            // Initialize Firebase
+            this.FireManager.init((user) => this.onAuthChange(user));
+            this.isCloudActive = true;
+            console.log("✅ Cloud Connected");
+        } catch (e) {
+            console.error("⚠️ CLOUD SYNC FAILED (Offline Mode Active):", e);
+            document.getElementById('account-btn').style.opacity = "0.3";
+            document.getElementById('account-btn').onclick = () => alert("Cloud Sync Unavailable.\n\nReason: " + e.message + "\n\n(Check console for details)");
+        }
     },
 
     onAuthChange: async function(user) {
+        if(!this.isCloudActive) return;
+        
         const loginView = document.getElementById('login-view');
         const profileView = document.getElementById('profile-view');
         const btn = document.getElementById('account-btn');
 
         if (user) {
-            // User Logged In
-            console.log("Logged in as: " + user.email);
+            console.log("Logged in: " + user.email);
             loginView.style.display = 'none';
             profileView.style.display = 'block';
             document.getElementById('user-email-display').innerText = user.email;
-            btn.style.color = '#D0BCFF'; // Highlight button
+            btn.style.color = '#D0BCFF'; 
 
-            // Load Cloud Scans
-            const cloudScans = await FireManager.loadCloudScans();
-            if(cloudScans.length > 0) {
-                this.scannedDocs = [...this.scannedDocs, ...cloudScans];
-                this.updateGalleryCount();
-                alert(`Synced ${cloudScans.length} scans from cloud!`);
-            }
+            try {
+                const cloudScans = await this.FireManager.loadCloudScans();
+                if(cloudScans.length > 0) {
+                    // Filter duplicates based on image data
+                    const newScans = cloudScans.filter(img => !this.scannedDocs.includes(img));
+                    if (newScans.length > 0) {
+                        this.scannedDocs = [...this.scannedDocs, ...newScans];
+                        this.updateGalleryCount();
+                        alert(`Synced ${newScans.length} new scans from cloud!`);
+                    }
+                }
+            } catch(e) { console.warn("Sync error", e); }
         } else {
-            // User Logged Out
             loginView.style.display = 'block';
             profileView.style.display = 'none';
             btn.style.color = 'white';
@@ -62,29 +85,40 @@ const app = {
     },
 
     bindEvents: function() {
-        // --- AUTH EVENTS ---
-        document.getElementById('account-btn').onclick = () => document.getElementById('auth-modal').style.display = 'flex';
+        // --- AUTH EVENTS (Safe Wrappers) ---
+        const safeAuth = (action) => {
+            if(!this.isCloudActive) return alert("Cloud not available (Check Config)");
+            action();
+        };
+
+        document.getElementById('account-btn').onclick = () => {
+             if(this.isCloudActive) document.getElementById('auth-modal').style.display = 'flex';
+        };
         document.getElementById('close-auth').onclick = () => document.getElementById('auth-modal').style.display = 'none';
         
         document.getElementById('do-signup').onclick = async () => {
-            const e = document.getElementById('email-input').value;
-            const p = document.getElementById('pass-input').value;
-            if(!e || !p) return alert("Enter email & password");
-            const res = await FireManager.signup(e, p);
-            if(!res.success) alert(res.error);
+            safeAuth(async () => {
+                const e = document.getElementById('email-input').value;
+                const p = document.getElementById('pass-input').value;
+                if(!e || !p) return alert("Enter email & password");
+                const res = await this.FireManager.signup(e, p);
+                if(!res.success) alert(res.error);
+            });
         };
 
         document.getElementById('do-login').onclick = async () => {
-            const e = document.getElementById('email-input').value;
-            const p = document.getElementById('pass-input').value;
-            if(!e || !p) return alert("Enter email & password");
-            const res = await FireManager.login(e, p);
-            if(!res.success) alert(res.error);
+            safeAuth(async () => {
+                const e = document.getElementById('email-input').value;
+                const p = document.getElementById('pass-input').value;
+                if(!e || !p) return alert("Enter email & password");
+                const res = await this.FireManager.login(e, p);
+                if(!res.success) alert(res.error);
+            });
         };
 
-        document.getElementById('do-logout').onclick = () => FireManager.logout();
+        document.getElementById('do-logout').onclick = () => safeAuth(() => this.FireManager.logout());
 
-        // --- STANDARD APP EVENTS ---
+        // --- STANDARD EVENTS ---
         document.getElementById('settings-btn').onclick = () => document.getElementById('settings-modal').style.display = 'flex';
         document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display = 'none';
         document.getElementById('auto-toggle').onclick = () => { this.autoCapture = !this.autoCapture; document.getElementById('auto-text').innerText = this.autoCapture ? "Auto: ON" : "Auto: OFF"; document.getElementById('auto-toggle').style.opacity = this.autoCapture ? "1" : "0.5"; };
@@ -179,7 +213,7 @@ const app = {
             const scaleX = w / pW, scaleY = h / pH;
             let pts = pointsData.length === 8 ? 
                 [{x:pointsData[0],y:pointsData[1]}, {x:pointsData[2],y:pointsData[3]}, {x:pointsData[4],y:pointsData[5]}, {x:pointsData[6],y:pointsData[7]}] : 
-                [{x:0,y:0},{x:pW,y:0},{x:pW,y:pH},{x:0,y:pH}]; // Fallback
+                [{x:0,y:0},{x:pW,y:0},{x:pW,y:pH},{x:0,y:pH}];
             
             pts = this.sortPoints(pts);
             this.detectedQuad = pts.map(p => ({ x: p.x / pW, y: p.y / pH }));
@@ -262,9 +296,6 @@ const app = {
 
     finishCrop: function() {
         const canvas = document.createElement('canvas');
-        // (Opencv Warp Logic...) - Simplified for brevity in this snippet
-        // ... Assume warpPerspective happens here and we get resultUrl ...
-        // Re-using the logic from v6.4 inside this function:
         const cCanvas = document.getElementById('crop-canvas');
         const scale = this.previewImg.width / cCanvas.width;
         const srcPts = this.cropPoints.map(p => p.x * scale);
@@ -285,8 +316,10 @@ const app = {
 
     saveScan: function(url) {
         this.scannedDocs.push(url);
-        // --- FIREBASE SYNC ---
-        FireManager.compressAndSaveScan(url);
+        // Only attempt save if cloud is actually active
+        if(this.isCloudActive && this.FireManager) {
+            this.FireManager.compressAndSaveScan(url);
+        }
         
         this.elements['crop-modal'].style.display = 'none';
         this.processing = false;
@@ -316,16 +349,15 @@ const app = {
         });
         this.elements['gallery-modal'].style.display = 'flex';
     },
-
-    // ... (Add applyFilter, deleteCurrentPage, exportPDF here - Same as v6.4) ...
-    // To save space in this response, keep the exact same filter/pdf logic from previous version.
-    // Ensure you assign them to `window.app` if calling from HTML onclick=""
     
     applyFilter: function(type) {
          const img = document.getElementById('editor-img');
-         // ... (Same filter logic) ...
-         // For now, simple mock to avoid huge block:
-         alert("Filter: " + type);
+         const src = cv.imread(img), dst = new cv.Mat();
+         if (type === 'bw') { cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY); cv.threshold(src, dst, 0, 255, cv.THRESH_BINARY | cv.THRESH_OTSU); }
+         else if (type === 'magic') { cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY); cv.adaptiveThreshold(src, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 15, 12); }
+         else { src.copyTo(dst); }
+         const canvas = document.createElement('canvas'); cv.imshow(canvas, dst); img.src = canvas.toDataURL(); this.scannedDocs[this.currentDocIndex] = img.src; src.delete(); dst.delete();
+         // Sync update if needed
     },
     
     deleteCurrentPage: function() {
@@ -345,7 +377,5 @@ const app = {
     }
 };
 
-// Make accessible to HTML onclick events
 window.app = app;
-
 document.addEventListener('DOMContentLoaded', () => app.init());
