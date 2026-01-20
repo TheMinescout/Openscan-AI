@@ -1,1 +1,15 @@
-js/firebase.js
+# --- System Files (Junk) ---
+.DS_Store
+Thumbs.db
+*.log
+
+# --- Editors ---
+.vscode/
+.idea/
+
+# --- Dependencies (If you add Node later) ---
+node_modules/
+package-lock.json
+
+# --- SECURITY (Block Firebase Keys) ---
+js/firebase-config.js
