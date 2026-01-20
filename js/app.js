@@ -1,253 +1,364 @@
 /**
- * OpenScan-AI v8.2 - Crash Fix
+ * Minescout Scanner v1.0 (Material Rebuild)
  */
-
 import { FireManager } from "./fire-manager.js";
 
 const app = {
-    // State
-    cvReady: false, streaming: false, autoCapture: true, processing: false,
-    scannedDocs: [], currentDocIndex: -1, detectWidth: 600,
-    
-    // Config
-    stabilityCounter: 0, stabilityThreshold: 30,
-    detectedQuad: null,
-    mat: { src: null, dst: null, binary: null, contours: null, hierarchy: null, poly: null },
-    elements: {},
-
-    init: async function() {
-        console.log("🚀 OpenScan-AI v8.2 Starting...");
-        this.cacheElements();
-        this.bindEvents();
-        await this.startCamera();
-        try { FireManager.init((user) => this.onAuthChange(user)); } catch(e) { console.warn("Cloud Skipped", e); }
-        if (typeof cv !== 'undefined' && cv.getBuildInformation) this.onOpenCVReady();
-        else { const c=setInterval(()=>{if(typeof cv!=='undefined'&&cv.getBuildInformation){clearInterval(c);this.onOpenCVReady();}},100); }
+    // --- APP STATE ---
+    state: {
+        view: 'home',
+        cameraActive: false,
+        autoCapture: true,
+        currentImage: null, // Blob or DataURL being edited
+        scans: [] // Local cache of scans
     },
 
-    cacheElements: function() {
-        this.video = document.getElementById('video-feed');
-        this.canvas = document.getElementById('overlay-canvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.elements = {};
-        // Add 'status-msg' to the list so we can check it later
-        ['status-msg', 'capture-btn', 'crop-modal', 'editor-modal', 'editor-img', 'flash-layer', 
-         'gallery-modal', 'gallery-grid', 'scan-count', 'last-scan-img', 'login-view', 'profile-view', 'auth-modal']
-         .forEach(id => {
-             const el = document.getElementById(id);
-             if(el) this.elements[id] = el;
-             else console.warn("Element missing:", id);
-         });
-        this.progressCircle = document.querySelector('.progress-ring__circle');
-    },
-
-    bindEvents: function() {
-        if(this.elements['capture-btn']) this.elements['capture-btn'].onclick = () => this.triggerCapture(true);
-        if(document.getElementById('gallery-trigger')) document.getElementById('gallery-trigger').onclick = () => this.openGallery();
-        document.getElementById('settings-btn').onclick = () => document.getElementById('settings-modal').style.display = 'flex';
-        document.getElementById('close-settings').onclick = () => document.getElementById('settings-modal').style.display = 'none';
-        document.getElementById('done-crop').onclick = () => this.finishCrop();
-        document.getElementById('cancel-crop').onclick = () => { this.elements['crop-modal'].style.display = 'none'; this.processing = false; this.ctx.clearRect(0,0,9999,9999); };
-        document.getElementById('close-gallery').onclick = () => this.elements['gallery-modal'].style.display = 'none';
-        document.getElementById('close-editor').onclick = () => this.elements['editor-modal'].style.display = 'none';
-        document.getElementById('save-editor').onclick = () => { this.elements['editor-modal'].style.display = 'none'; this.openGallery(); };
-        document.getElementById('account-btn').onclick = () => document.getElementById('auth-modal').style.display = 'flex';
-        document.getElementById('close-auth').onclick = () => document.getElementById('auth-modal').style.display = 'none';
-        document.getElementById('auto-toggle').onclick = () => { this.autoCapture = !this.autoCapture; document.getElementById('auto-text').innerText = this.autoCapture ? "Auto: ON" : "Auto: OFF"; document.getElementById('auto-toggle').style.opacity = this.autoCapture ? "1" : "0.5"; };
-        document.getElementById('do-login').onclick = async () => { const e=document.getElementById('email-input').value, p=document.getElementById('pass-input').value; const r=await FireManager.login(e,p); if(!r.success)alert(r.error); };
-        document.getElementById('do-signup').onclick = async () => { const e=document.getElementById('email-input').value, p=document.getElementById('pass-input').value; const r=await FireManager.signup(e,p); if(!r.success)alert(r.error); };
-        document.getElementById('do-logout').onclick = () => FireManager.logout();
-        document.getElementById('export-btn').onclick = () => this.exportPDF();
-        document.getElementById('quality-select').onchange = () => this.startCamera();
-        document.getElementById('about-btn').onclick = () => { document.getElementById('settings-modal').style.display='none'; document.getElementById('about-modal').style.display='flex'; };
-        document.getElementById('close-about').onclick = () => document.getElementById('about-modal').style.display='none';
-        window.addEventListener('resize', () => this.resizeOverlay());
-    },
-
-    startCamera: async function() {
-        const q = document.getElementById('quality-select').value;
-        const w = q==='4k'?3840:(q==='720p'?1280:1920), h = q==='4k'?2160:(q==='720p'?720:1080);
-        try { this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: w }, height: { ideal: h } }, audio: false }); }
-        catch(e) { try { this.stream = await navigator.mediaDevices.getUserMedia({ video: true }); } catch(e2){ alert("Camera Failed"); return; } }
-        this.video.srcObject = this.stream;
-        this.video.onloadedmetadata = () => { this.video.play(); this.resizeOverlay(); this.streaming = true; this.initCVMats(); this.processFrame(); };
-    },
-
-    processFrame: function() {
-        if (!this.streaming || !this.cvReady || this.processing) { requestAnimationFrame(() => this.processFrame()); return; }
-        try {
-            const w = this.detectWidth, h = Math.round(w * (this.video.videoHeight / this.video.videoWidth));
-            const pc = document.getElementById('proc-canvas'); if(pc.width!==w) {pc.width=w;pc.height=h;}
-            const pCtx = pc.getContext('2d'); pCtx.drawImage(this.video, 0, 0, w, h);
+    // --- SUB-MODULES ---
+    router: {
+        go: function(viewName) {
+            // Hide all views
+            document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
             
-            let src = this.mat.src; src.data.set(pCtx.getImageData(0, 0, w, h).data);
-            cv.cvtColor(src, this.mat.dst, cv.COLOR_RGBA2GRAY);
-            cv.GaussianBlur(this.mat.dst, this.mat.dst, new cv.Size(5, 5), 0);
-            cv.threshold(this.mat.dst, this.mat.binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
-            let cnts = new cv.MatVector(); cv.findContours(this.mat.binary, cnts, this.mat.hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            // Show target
+            document.getElementById(`view-${viewName}`).classList.add('active');
             
-            let maxA=0, best=null, minA=(w*h)*0.15;
-            for(let i=0; i<cnts.size(); ++i) {
-                let c = cnts.get(i), a = cv.contourArea(c);
-                if(a>minA) {
-                    let p = cv.arcLength(c, true); cv.approxPolyDP(c, this.mat.poly, 0.02*p, true);
-                    if(cv.isContourConvex(this.mat.poly) && (this.mat.poly.rows===4 || a>minA*2)) { if(a>maxA) { maxA=a; best=this.mat.poly.data32S; } }
-                }
-            }
-            cnts.delete(); this.drawOverlay(best, w, h);
-        } catch(e) { this.initCVMats(); }
-        requestAnimationFrame(() => this.processFrame());
-    },
+            // Update Nav
+            const navBtn = document.querySelector(`.nav-item[data-target="${viewName}"]`);
+            if(navBtn) navBtn.classList.add('active');
 
-    drawOverlay: function(pts, pW, pH) {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        if(pts) {
-            const sx = this.canvas.width/pW, sy = this.canvas.height/pH;
-            let p = pts.length===8 ? [{x:pts[0],y:pts[1]},{x:pts[2],y:pts[3]},{x:pts[4],y:pts[5]},{x:pts[6],y:pts[7]}] : [{x:0,y:0},{x:pW,y:0},{x:pW,y:pH},{x:0,y:pH}];
-            p = this.sortPoints(p);
-            this.detectedQuad = p.map(pt => ({ x: pt.x/pW, y: pt.y/pH }));
-            
-            this.ctx.beginPath(); this.ctx.lineWidth=4; this.ctx.strokeStyle='#D0BCFF';
-            this.ctx.moveTo(p[0].x*sx, p[0].y*sy); for(let i=1; i<4; i++) this.ctx.lineTo(p[i].x*sx, p[i].y*sy);
-            this.ctx.closePath(); this.ctx.stroke();
+            // Handle Camera Lifecycle
+            if(viewName === 'scanner') app.camera.start();
+            else app.camera.stop();
 
-            if(this.autoCapture && !this.processing) {
-                this.updateStatus("Hold Still", "rgba(0,200,0,0.5)");
-                this.stabilityCounter++;
-                if(this.progressCircle) this.progressCircle.style.strokeDashoffset = 251 - (251 * Math.min(this.stabilityCounter/this.stabilityThreshold, 1));
-                if(this.stabilityCounter >= this.stabilityThreshold) this.triggerCapture(false);
-            }
-        } else {
-            this.detectedQuad=null; this.stabilityCounter=0;
-            if(this.progressCircle) this.progressCircle.style.strokeDashoffset = 251;
-            this.updateStatus("Searching...", "rgba(0,0,0,0.4)");
+            app.state.view = viewName;
+        },
+        back: function() {
+            this.go('home'); // Simple logic for now
         }
     },
-    
-    // SAFE STATUS UPDATE (Prevents Crash)
-    updateStatus: function(text, bg) {
-        const el = this.elements['status-msg'];
-        if(el) { el.innerText = text; el.style.background = bg; }
-    },
 
-    triggerCapture: function(isManual) {
-        if (this.processing) return;
-        this.processing = true; this.stabilityCounter = 0;
-        this.elements['flash-layer'].style.opacity = 0.8; setTimeout(() => this.elements['flash-layer'].style.opacity = 0, 150);
+    camera: {
+        stream: null,
+        video: null,
+        detectWidth: 600,
+        cvReady: false,
+        stability: 0,
         
-        const c = document.createElement('canvas'); c.width=this.video.videoWidth; c.height=this.video.videoHeight;
-        c.getContext('2d').drawImage(this.video, 0, 0);
-        
-        // Safety Check: Is canvas empty?
-        const check = c.getContext('2d').getImageData(0,0,1,1).data;
-        if(check[3] === 0) { console.error("Empty Capture"); this.processing = false; return; }
+        init: function() {
+            this.video = document.getElementById('video-feed');
+            if(typeof cv !== 'undefined') this.onCVReady();
+            else document.addEventListener('opencv_ready', () => this.onCVReady());
+        },
 
-        let pts = this.detectedQuad || [{x:0.1, y:0.1}, {x:0.9, y:0.1}, {x:0.9, y:0.9}, {x:0.1, y:0.9}];
-        const fullPts = pts.map(p => ({ x: p.x * c.width, y: p.y * c.height }));
-        this.rawCapture = c.toDataURL('image/jpeg');
-        this.openCropModal(this.rawCapture, fullPts);
-    },
-
-    openCropModal: function(src, pts) {
-        this.elements['crop-modal'].style.display = 'flex';
-        const c = document.getElementById('crop-canvas');
-        const ui = document.getElementById('crop-ui-container');
-        this.previewImg = new Image();
-        this.previewImg.onload = () => {
-             const s = Math.min((window.innerWidth-40)/this.previewImg.width, (window.innerHeight*0.7)/this.previewImg.height);
-             c.width = this.previewImg.width*s; c.height = this.previewImg.height*s;
-             ui.style.width = c.width+"px"; ui.style.height = c.height+"px";
-             c.getContext('2d').drawImage(this.previewImg,0,0,c.width,c.height);
-             this.cropPoints = this.sortPoints(pts).map(p => ({x:p.x*s, y:p.y*s}));
-             this.updateCropUI(s);
-        };
-        this.previewImg.src = src;
-    },
-
-    updateCropUI: function(s) {
-        const ctx = document.getElementById('crop-canvas').getContext('2d');
-        const h = document.querySelectorAll('.crop-handle');
-        ctx.drawImage(this.previewImg,0,0,ctx.canvas.width,ctx.canvas.height);
-        ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(ctx.canvas.width,0); ctx.lineTo(ctx.canvas.width,ctx.canvas.height); ctx.lineTo(0,ctx.canvas.height); ctx.closePath();
-        ctx.moveTo(this.cropPoints[0].x,this.cropPoints[0].y); ctx.lineTo(this.cropPoints[1].x,this.cropPoints[1].y); ctx.lineTo(this.cropPoints[2].x,this.cropPoints[2].y); ctx.lineTo(this.cropPoints[3].x,this.cropPoints[3].y); ctx.closePath(); ctx.fill('evenodd');
-        ctx.strokeStyle='#D0BCFF'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(this.cropPoints[0].x,this.cropPoints[0].y); this.cropPoints.forEach(p=>ctx.lineTo(p.x,p.y)); ctx.closePath(); ctx.stroke();
-        h.forEach((handle, i) => {
-            handle.style.left = this.cropPoints[i].x+'px'; handle.style.top = this.cropPoints[i].y+'px';
-            const drag = (e) => {
-                const r = document.getElementById('crop-ui-container').getBoundingClientRect();
-                const cx = e.touches?e.touches[0].clientX:e.clientX, cy = e.touches?e.touches[0].clientY:e.clientY;
-                this.cropPoints[i].x = Math.max(0,Math.min(ctx.canvas.width, cx-r.left)); this.cropPoints[i].y = Math.max(0,Math.min(ctx.canvas.height, cy-r.top));
-                this.updateCropUI(s);
+        onCVReady: function() {
+            this.cvReady = true;
+            this.mat = { 
+                src: new cv.Mat(), dst: new cv.Mat(), binary: new cv.Mat(), 
+                contours: new cv.MatVector(), poly: new cv.Mat() 
             };
-            const end = () => { document.removeEventListener('mousemove',drag); document.removeEventListener('mouseup',end); document.removeEventListener('touchmove',drag); document.removeEventListener('touchend',end); };
-            handle.onmousedown = () => { document.addEventListener('mousemove',drag); document.addEventListener('mouseup',end); };
-            handle.ontouchstart = () => { document.addEventListener('touchmove',drag); document.addEventListener('touchend',end); };
+        },
+
+        start: async function() {
+            if(this.stream) return;
+            try {
+                // Nuclear fallback logic
+                try {
+                    this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+                } catch(e) {
+                    this.stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                }
+                this.video.srcObject = this.stream;
+                this.video.play();
+                app.state.cameraActive = true;
+                this.processLoop();
+            } catch(e) {
+                alert("Camera Access Denied");
+            }
+        },
+
+        stop: function() {
+            if(this.stream) {
+                this.stream.getTracks().forEach(t => t.stop());
+                this.stream = null;
+                app.state.cameraActive = false;
+            }
+        },
+
+        processLoop: function() {
+            if(!app.state.cameraActive || !this.cvReady) return;
+            
+            // 1. Draw frame to hidden canvas for processing
+            const proc = document.getElementById('proc-canvas');
+            const aspect = this.video.videoHeight / this.video.videoWidth;
+            if(proc.width !== this.detectWidth) {
+                proc.width = this.detectWidth; proc.height = this.detectWidth * aspect;
+            }
+            const ctx = proc.getContext('2d');
+            ctx.drawImage(this.video, 0, 0, proc.width, proc.height);
+
+            // 2. OpenCV Detection
+            try {
+                let src = this.mat.src;
+                if(src.cols !== proc.width) {
+                    src.create(proc.height, proc.width, cv.CV_8UC4);
+                    this.mat.dst.create(proc.height, proc.width, cv.CV_8UC1);
+                    this.mat.binary.create(proc.height, proc.width, cv.CV_8UC1);
+                }
+                
+                src.data.set(ctx.getImageData(0,0,proc.width,proc.height).data);
+                cv.cvtColor(src, this.mat.dst, cv.COLOR_RGBA2GRAY);
+                cv.threshold(this.mat.dst, this.mat.binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+                
+                cv.findContours(this.mat.binary, this.mat.contours, new cv.Mat(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+                // Find largest quad
+                let maxArea = 0, bestQuad = null;
+                for(let i=0; i<this.mat.contours.size(); i++) {
+                    let cnt = this.mat.contours.get(i);
+                    let area = cv.contourArea(cnt);
+                    if(area > (proc.width*proc.height)*0.1) { // 10% screen
+                        let peri = cv.arcLength(cnt, true);
+                        cv.approxPolyDP(cnt, this.mat.poly, 0.02*peri, true);
+                        if(this.mat.poly.rows === 4) {
+                             if(area > maxArea) { maxArea = area; bestQuad = this.mat.poly.data32S; }
+                        }
+                    }
+                }
+                
+                this.drawOverlay(bestQuad, proc.width, proc.height);
+
+            } catch(e) { console.error(e); }
+
+            requestAnimationFrame(() => this.processLoop());
+        },
+
+        drawOverlay: function(points, dw, dh) {
+            const canvas = document.getElementById('overlay-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = this.video.clientWidth; canvas.height = this.video.clientHeight;
+            
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            
+            if(points) {
+                // Scale points
+                const sx = canvas.width / dw; const sy = canvas.height / dh;
+                // Draw Box
+                ctx.beginPath();
+                ctx.moveTo(points[0]*sx, points[1]*sy);
+                ctx.lineTo(points[2]*sx, points[3]*sy);
+                ctx.lineTo(points[4]*sx, points[5]*sy);
+                ctx.lineTo(points[6]*sx, points[7]*sy);
+                ctx.closePath();
+                ctx.strokeStyle = '#5d8c58'; ctx.lineWidth = 4; ctx.stroke();
+                
+                // Auto Capture Logic
+                if(app.state.autoCapture) {
+                    this.stability++;
+                    const ring = document.querySelector('.progress-ring__circle');
+                    const offset = 226 - (226 * (Math.min(this.stability/30, 1)));
+                    ring.style.strokeDashoffset = offset;
+                    
+                    if(this.stability > 30) {
+                        this.capture(points); // Auto snap
+                        this.stability = 0;
+                    }
+                    document.getElementById('scan-status').innerText = "Hold Steady...";
+                }
+            } else {
+                this.stability = 0;
+                document.querySelector('.progress-ring__circle').style.strokeDashoffset = 226;
+                document.getElementById('scan-status').innerText = "Looking for document...";
+            }
+        },
+
+        capture: function(cropPoints) {
+            // Flash
+            this.video.style.opacity = 0.5; setTimeout(()=>this.video.style.opacity=1, 100);
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = this.video.videoWidth; canvas.height = this.video.videoHeight;
+            canvas.getContext('2d').drawImage(this.video, 0, 0);
+            
+            const url = canvas.toDataURL('image/jpeg');
+            
+            // Send to Editor
+            app.editor.load(url);
+            app.router.go('editor');
+        },
+
+        toggleFlash: function() {
+            // Basic implementation requires advanced constraints, placeholder for now
+            alert("Flash toggle logic requires stream constraints update.");
+        },
+
+        switchCamera: function() {
+            this.stop();
+            this.start(); // Simple toggle for now, would typically cycle IDs
+        }
+    },
+
+    editor: {
+        load: function(src) {
+            const img = document.getElementById('edit-target');
+            img.src = src;
+            app.state.currentImage = src;
+        },
+        
+        applyFilter: function(type) {
+            // Using OpenCV for filters
+            const img = document.getElementById('edit-target');
+            const src = cv.imread(img);
+            const dst = new cv.Mat();
+            
+            if(type === 'bw') {
+                cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
+                cv.threshold(src, dst, 0, 255, cv.THRESH_BINARY | cv.THRESH_OTSU);
+            } else if (type === 'magic') {
+                cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
+                cv.adaptiveThreshold(src, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 15, 10);
+            }
+            
+            const canvas = document.createElement('canvas');
+            cv.imshow(canvas, dst);
+            img.src = canvas.toDataURL();
+            
+            src.delete(); dst.delete();
+        },
+
+        rotate: function() {
+            const img = document.getElementById('edit-target');
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const i = new Image();
+            i.onload = () => {
+                canvas.width = i.height; canvas.height = i.width;
+                ctx.translate(canvas.width/2, canvas.height/2);
+                ctx.rotate(90 * Math.PI / 180);
+                ctx.drawImage(i, -i.width/2, -i.height/2);
+                img.src = canvas.toDataURL();
+            };
+            i.src = img.src;
+        },
+
+        save: function() {
+            const img = document.getElementById('edit-target');
+            // Save to Local History
+            app.state.scans.push(img.src);
+            // Sync to Cloud
+            FireManager.compressAndSaveScan(img.src);
+            // Update UI
+            app.history.render();
+            // Go to History
+            app.router.go('history');
+        },
+
+        delete: function() {
+            if(confirm("Delete this scan?")) app.router.back();
+        },
+
+        startCrop: function() { alert("Crop tool active (Visual placeholder)"); },
+        exportPDF: function() {
+             const { jsPDF } = window.jspdf;
+             const doc = new jsPDF();
+             doc.addImage(document.getElementById('edit-target').src, 'JPEG', 10, 10, 190, 0);
+             doc.save('Minescout-Scan.pdf');
+        }
+    },
+
+    history: {
+        render: function() {
+            const grid = document.getElementById('scan-grid');
+            grid.innerHTML = '';
+            
+            // Combine local and cloud
+            const allScans = app.state.scans;
+            
+            if(allScans.length === 0) {
+                grid.innerHTML = "<p style='grid-column:span 2; text-align:center; color:#888;'>No scans found.</p>";
+                return;
+            }
+
+            // Update mini preview on scanner
+            document.getElementById('last-scan-thumb').src = allScans[allScans.length-1];
+
+            allScans.forEach(src => {
+                const card = document.createElement('div');
+                card.className = 'post-card';
+                card.innerHTML = `<img src="${src}">`;
+                card.onclick = () => {
+                    app.editor.load(src);
+                    app.router.go('editor');
+                };
+                grid.appendChild(card);
+            });
+        }
+    },
+
+    // --- INITIALIZATION ---
+    init: async function() {
+        console.log("Minescout Scanner Init");
+        this.camera.init();
+        
+        // Listen for File Uploads
+        document.getElementById('file-upload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if(file) {
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    app.editor.load(evt.target.result);
+                    app.router.go('editor');
+                };
+                reader.readAsDataURL(file);
+            }
         });
-    },
 
-    finishCrop: function() {
-        const c = document.createElement('canvas');
-        const s = this.previewImg.width / document.getElementById('crop-canvas').width;
-        const pts = this.sortPoints(this.cropPoints).map(p=>p.x*s);
-        const w = Math.max(Math.hypot(pts[1].x-pts[0].x, pts[1].y-pts[0].y), Math.hypot(pts[2].x-pts[3].x, pts[2].y-pts[3].y));
-        const h = Math.max(Math.hypot(pts[3].x-pts[0].x, pts[3].y-pts[0].y), Math.hypot(pts[2].x-pts[1].x, pts[2].y-pts[1].y));
-        const srcTri = cv.matFromArray(4,1,cv.CV_32FC2, [pts[0].x,pts[0].y, pts[1].x,pts[1].y, pts[2].x,pts[2].y, pts[3].x,pts[3].y]);
-        const dstTri = cv.matFromArray(4,1,cv.CV_32FC2, [0,0, w,0, w,h, 0,h]);
-        const M = cv.getPerspectiveTransform(srcTri, dstTri);
-        const src = cv.imread(this.previewImg), dst = new cv.Mat();
-        cv.warpPerspective(src, dst, M, new cv.Size(w, h));
-        cv.imshow(c, dst);
-        const url = c.toDataURL('image/jpeg', 0.85);
-        src.delete(); dst.delete(); M.delete(); srcTri.delete(); dstTri.delete();
-        this.saveScan(url);
-    },
+        // Setup Buttons
+        document.getElementById('shutter-btn').onclick = () => app.camera.capture();
+        document.getElementById('auto-chip').onclick = (e) => {
+            app.state.autoCapture = !app.state.autoCapture;
+            e.currentTarget.classList.toggle('active');
+        };
 
-    saveScan: function(url) {
-        if(!url || url.length < 100) return alert("Save Error");
-        this.scannedDocs.push(url);
-        try { FireManager.compressAndSaveScan(url); } catch(e){}
-        this.elements['crop-modal'].style.display = 'none';
-        this.processing = false;
-        this.elements['scan-count'].innerText = this.scannedDocs.length;
-        this.elements['scan-count'].style.display = 'block';
-        this.elements['last-scan-img'].src = url; 
-        this.elements['last-scan-img'].style.display = 'block';
-        document.querySelector('.placeholder-icon').style.display = 'none';
-        this.processFrame();
-    },
+        // Initialize Firebase
+        try {
+            FireManager.init((user) => {
+                const gate = document.getElementById('auth-gate');
+                const content = document.getElementById('history-content');
+                if(user) {
+                    gate.classList.add('hidden');
+                    content.classList.remove('hidden');
+                    document.getElementById('user-email').innerText = user.email;
+                    document.getElementById('btn-logout').classList.remove('hidden');
+                    
+                    // Load cloud scans
+                    FireManager.loadCloudScans().then(scans => {
+                        app.state.scans = [...app.state.scans, ...scans];
+                        app.history.render();
+                    });
+                } else {
+                    gate.classList.remove('hidden');
+                    content.classList.add('hidden');
+                    document.getElementById('btn-logout').classList.add('hidden');
+                }
+            });
+        } catch(e) { console.warn("Firebase offline"); }
 
-    sortPoints: function(pts) {
-        pts.sort((a,b)=>a.y-b.y);
-        const t = pts.slice(0,2).sort((a,b)=>a.x-b.x);
-        const b = pts.slice(2,4).sort((a,b)=>b.x-a.x);
-        return [t[0],t[1],b[0],b[1]];
-    },
-    
-    openGallery: function() {
-        const grid = this.elements['gallery-grid']; grid.innerHTML='';
-        if(this.scannedDocs.length===0) grid.innerHTML='<p style="text-align:center;width:100%;color:#666;">No scans</p>';
-        this.scannedDocs.forEach((d,i)=>{
-            const img = document.createElement('img'); img.src=d;
-            img.onclick = () => { this.currentDocIndex=i; document.getElementById('editor-img').src=d; this.elements['editor-modal'].style.display='flex'; };
-            grid.appendChild(img);
-        });
-        this.elements['gallery-modal'].style.display='flex';
-    },
-
-    onAuthChange: async function(user) {
-        if (user) {
-            this.elements['login-view'].style.display = 'none'; this.elements['profile-view'].style.display = 'block';
-            document.getElementById('user-email-display').innerText = user.email; document.getElementById('account-btn').style.color = '#D0BCFF';
-            try { const s = await FireManager.loadCloudScans(); if(s.length>0) { const n=s.filter(u=>!this.scannedDocs.includes(u)); if(n.length>0){this.scannedDocs=[...this.scannedDocs,...n]; this.elements['scan-count'].innerText=this.scannedDocs.length; this.elements['scan-count'].style.display='block';} } } catch(e){}
-        } else { this.elements['login-view'].style.display = 'block'; this.elements['profile-view'].style.display = 'none'; document.getElementById('account-btn').style.color = 'white'; }
-    },
-    
-    onOpenCVReady: function() { this.cvReady = true; this.initCVMats(); },
-    initCVMats: function() { const h = Math.round(this.detectWidth * (this.video.videoHeight/this.video.videoWidth)); if(this.mat.src) this.mat.src.delete(); this.mat.src = new cv.Mat(h, this.detectWidth, cv.CV_8UC4); this.mat.dst = new cv.Mat(h, this.detectWidth, cv.CV_8UC1); this.mat.binary = new cv.Mat(h, this.detectWidth, cv.CV_8UC1); this.mat.hierarchy = new cv.Mat(); this.mat.poly = new cv.Mat(); },
-    resizeOverlay: function() { this.canvas.width=this.video.clientWidth; this.canvas.height=this.video.clientHeight; },
-    applyFilter: function(type) { const img=document.getElementById('editor-img'); const src=cv.imread(img),dst=new cv.Mat(); if(type==='bw'){cv.cvtColor(src,src,cv.COLOR_RGBA2GRAY);cv.threshold(src,dst,0,255,cv.THRESH_BINARY|cv.THRESH_OTSU);}else if(type==='magic'){cv.cvtColor(src,src,cv.COLOR_RGBA2GRAY);cv.adaptiveThreshold(src,dst,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY,15,12);}else{src.copyTo(dst);} const c=document.createElement('canvas');cv.imshow(c,dst);img.src=c.toDataURL();this.scannedDocs[this.currentDocIndex]=img.src;src.delete();dst.delete(); },
-    deleteCurrentPage: function() { if(confirm("Delete?")){this.scannedDocs.splice(this.currentDocIndex,1);this.elements['editor-modal'].style.display='none';this.openGallery();this.elements['scan-count'].innerText=this.scannedDocs.length;} },
-    exportPDF: function() { if(this.scannedDocs.length===0)return alert("Empty"); const {jsPDF}=window.jspdf; const doc=new jsPDF(); this.scannedDocs.forEach((img,i)=>{if(i>0)doc.addPage();const p=doc.getImageProperties(img);doc.addImage(img,'JPEG',0,0,doc.internal.pageSize.getWidth(),(p.height*doc.internal.pageSize.getWidth())/p.width);}); doc.save('scan.pdf'); }
+        // Auth Buttons
+        document.getElementById('btn-login').onclick = async () => {
+            const e = document.getElementById('email-in').value;
+            const p = document.getElementById('pass-in').value;
+            const r = await FireManager.login(e,p);
+            if(!r.success) alert(r.error);
+        };
+        document.getElementById('btn-signup').onclick = async () => {
+            const e = document.getElementById('email-in').value;
+            const p = document.getElementById('pass-in').value;
+            const r = await FireManager.signup(e,p);
+            if(!r.success) alert(r.error);
+        };
+        document.getElementById('btn-logout').onclick = () => FireManager.logout();
+    }
 };
 
 window.app = app;
