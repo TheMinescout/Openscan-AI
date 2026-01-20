@@ -29,25 +29,30 @@ Unlike traditional scanner apps, OpenScan-AI performs all image processing local
 ### 🧠 Intelligent Tools
 * **On-Device OCR:** Extract text from scanned images using Tesseract.js. Copy text directly to your clipboard.
 * **PDF Export:** Compile multiple scans into a single PDF file using `jsPDF`.
-🛠️ Tech Stack
-Frontend: HTML5, CSS3, Vanilla JavaScript (ES Modules).
-Computer Vision: OpenCV.js (v4.x).
-Backend: Firebase (Auth + Realtime Database).
-PDF Generation: jsPDF.
-OCR Engine: Tesseract.js.
-🔒 Privacy Policy
+
+## 🛠️ Tech Stack
+* **Frontend:** HTML5, CSS3, Vanilla JavaScript (ES Modules).
+* **Computer Vision:** OpenCV.js (v4.x).
+* **Backend:** Firebase (Auth + Realtime Database).
+* **PDF Generation:** jsPDF.
+* **OCR Engine:** Tesseract.js.
+
+## 🔒 Privacy Policy
 OpenScan-AI Cloud prioritizes your privacy:
-Offline Mode: If you do not log in, all processing and data remain 100% on your device.
-Cloud Mode: If you choose to log in, image data is stored securely in your private Firebase database path.
-We do not sell data or use tracking analytics.
-☕ Support the Project
+* **Offline Mode:** If you do not log in, all processing and data remain 100% on your device.
+* **Cloud Mode:** If you choose to log in, image data is stored securely in your private Firebase database path.
+* We do not sell data or use tracking analytics.
+
+## ☕ Support the Project
 This project is open-source and free to use. If you find it useful for your studies or work, consider supporting development!
+
 <a href="https://buymeacoffee.com/theminescout" target="_blank">
 <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" >
 </a>
-🤝 Contributing
-Fork the repository.
-Create a new branch (git checkout -b feature/AmazingFeature).
-Commit your changes (git commit -m 'Add some AmazingFeature').
-Push to the branch (git push origin feature/AmazingFeature).
-Open a Pull Request.
+
+## 🤝 Contributing
+1. Fork the repository.
+2. Create a new branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
+4. Push to the branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
